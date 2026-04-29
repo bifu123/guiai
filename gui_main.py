@@ -7,9 +7,20 @@ import pyautogui
 import base64
 import time
 import ctypes
+import threading
+import sys
+import os
+import pystray
+from PIL import Image, ImageDraw
 from io import BytesIO
 from pydantic import BaseModel
 from typing import List, Optional
+
+# --- 0. 解决 PyInstaller --noconsole 模式下 stdout/stderr 丢失导致崩溃的问题 ---
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w")
 
 # --- 1. 核心初始化：彻底解决高分屏点击偏移业务 ---
 try:
@@ -113,7 +124,43 @@ async def execute_action(req: ActionRequest):
         print(f"执行异常: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-if __name__ == "__main__":
-    # 在 8000 端口启动服务
+def run_server():
+    """在后台线程运行 FastAPI 服务"""
     print("GUI 执行器已启动，等待 Agent 指令...")
+    # 注意：在多线程中运行 uvicorn，需要设置 log_config=None 避免日志冲突，或者保持默认
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+def create_image():
+    """生成一个简单的托盘图标（蓝色正方形带白色 G 字）"""
+    width = 64
+    height = 64
+    color1 = (0, 120, 215) # Windows 蓝
+    color2 = (255, 255, 255)
+    
+    image = Image.new('RGB', (width, height), color1)
+    dc = ImageDraw.Draw(image)
+    # 画一个简单的 G
+    dc.text((20, 15), "G", fill=color2, font=None, align="center")
+    return image
+
+def on_quit(icon, item):
+    """退出程序的处理函数"""
+    icon.stop()
+    # 强制结束整个进程（因为 uvicorn 线程可能还在运行）
+    os._exit(0)
+
+if __name__ == "__main__":
+    # 1. 启动 FastAPI 后台线程
+    server_thread = threading.Thread(target=run_server, daemon=True)
+    server_thread.start()
+
+    # 2. 创建并运行系统托盘图标（必须在主线程）
+    icon_image = create_image()
+    menu = pystray.Menu(
+        pystray.MenuItem("GUI Agent 执行器运行中...", lambda: None, enabled=False),
+        pystray.MenuItem("退出", on_quit)
+    )
+    
+    icon = pystray.Icon("GUI_Agent", icon_image, "GUI Agent 执行器", menu)
+    # 运行托盘图标（这是一个阻塞调用，直到用户点击退出）
+    icon.run()

@@ -5,10 +5,13 @@ import requests
 import json
 from gui_vl import glm_4_6v_flash
 from ocr_service import QwenDetector
+from ocr_openrouter import OpenRouterDetector
 
-GUI_CLIENT_URL = "http://192.168.2.16:8000/execute"
+gui_client_url = "http://192.168.2.16:8000/execute"
 qwen_detector = QwenDetector()
+# qwen_detector = QwenDetector()
 
+# 从模型响应中提取并解析JSON
 def parse_json_response(response_text):
     """辅助函数：从模型响应中提取并解析JSON，处理常见的转义问题"""
     if "```json" in response_text:
@@ -29,6 +32,7 @@ def parse_json_response(response_text):
             return json.loads(match.group())
         raise
 
+# 请求操作指导
 def ask_vlm_for_action(screenshot_base64, user_intent):
     """
     请求操作指导，只负责理解意图并输出目标名称和动作
@@ -55,6 +59,7 @@ def ask_vlm_for_action(screenshot_base64, user_intent):
     print(f"[DEBUG] 决策原始响应: {response_text}")
     return parse_json_response(response_text)
 
+# 验证结果
 def verify_task_success(screenshot_base64, user_intent):
     """
     使用视觉模型判断用户意图是否已经实现
@@ -83,21 +88,25 @@ def verify_task_success(screenshot_base64, user_intent):
     print(f"[DEBUG] 验证原始响应: {response_text}")
     return parse_json_response(response_text)
 
-def run_agent_task(intent, max_attempts=5):
+def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.2.16:8000/execute"):
     print(f"开始执行任务职责: {intent}")
+    
+    reason = "操作失败"
     
     for attempt in range(max_attempts):
         print(f"\n--- 第 {attempt + 1}/{max_attempts} 次尝试 ---")
         
         # --- 1. 初始截图 ---
-        initial_res = requests.post(GUI_CLIENT_URL, json={
+        initial_res = requests.post(gui_client_url, json={
             "action": "screenshot",
             "coords": [0, 0]
         }).json()
         current_screenshot = initial_res.get("screenshot")
+        # print(f'[GUI] - step 1 - 初始截图:\n {current_screenshot[50]}...')
         
         # --- 2. 决策：理解意图并提取目标 ---
         decision = ask_vlm_for_action(current_screenshot, intent)
+        # print(f'[GUI] - step 2 - 决策：理解意图并提取目标:\n {json.dumps(decision,ensure_ascii=False,indent=4)}')
         print(f"Agent 决策理由: {decision.get('reason')}")
         
         target_name = decision.get("target")
@@ -110,6 +119,7 @@ def run_agent_task(intent, max_attempts=5):
         # --- 3. 定位：使用 QwenDetector 获取物理坐标 ---
         print(f"正在使用 QwenDetector 定位目标: {target_name} ...")
         coords_result = qwen_detector.get_target_coords(current_screenshot, target_name)
+        # print(f'[GUI] - step 3 - 定位目标:\n {json.dumps(coords_result,ensure_ascii=False,indent=4)}')
         
         if not coords_result:
             print(f"定位目标 {target_name} 失败。")
@@ -126,7 +136,8 @@ def run_agent_task(intent, max_attempts=5):
             "key": decision.get("key", "")
         }
         
-        response = requests.post(GUI_CLIENT_URL, json=req_data).json()
+        response = requests.post(gui_client_url, json=req_data).json()
+        # print(f'[GUI] - step 4 - 执行动作:\n {json.dumps(response,ensure_ascii=False,indent=4)}')
         print(f"动作执行完成，坐标: {req_data['coords']}")
         
         # 等待界面响应
@@ -134,24 +145,33 @@ def run_agent_task(intent, max_attempts=5):
         
         # --- 5. 验证结果 ---
         print("正在验证任务是否成功...")
-        verify_res = requests.post(GUI_CLIENT_URL, json={
+        verify_res = requests.post(gui_client_url, json={
             "action": "screenshot",
             "coords": [0, 0]
         }).json()
         verify_screenshot = verify_res.get("screenshot")
         
         verification = verify_task_success(verify_screenshot, intent)
+        # print(f'[GUI] - step 5 - 验证任务是否成功:\n {json.dumps(verification,ensure_ascii=False,indent=4)}')
         is_success = verification.get("is_success", False)
         reason = verification.get("reason", "未知原因")
         
         print(f"验证结果: {'成功' if is_success else '失败'} - {reason}")
         
         if is_success:
-            return {"status": "success", "final_coords": req_data['coords'], "attempts": attempt + 1}
+            return {
+                "status": "success", 
+                "reason": reason,
+                "coords": req_data['coords'], 
+                "attempts": attempt + 1
+            }
             
-    return {"status": "failed", "reason": "Max attempts reached"}
+    return {
+        "status": "failed", 
+        "reason": reason
+    }
 
 if __name__ == "__main__":
     # 保持你的 API Key 不变
-    response = run_agent_task(r"双击打开桌面的 '腾讯QQ' 图标")
-    print(response)
+    response = run_agent_task(r"打开桌面上的`此电脑`")
+    print(json.dumps(response,ensure_ascii=False,indent=4))

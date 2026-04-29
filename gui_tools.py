@@ -198,18 +198,69 @@ def scroll_screen(
 #     }
 #     return _call_executor(payload, endpoint)
 
+# 用于agent的工具
+def run_for_agent(intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.2.16:8000/execute"):
+    """
+    执行 GUI Agent 任务，根据自然语言意图自动操作桌面。
+
+    Args:
+        intent (str): 用户的自然语言意图，例如 "在桌面上打开此电脑图标"。
+        max_attempts (int, optional): 最大尝试次数。默认为 5。
+        gui_client_url (str, optional): GUI 执行器的 URL 地址。默认为 "http://192.168.2.16:8000/execute"。
+
+    Returns:
+        str: 包含操作结果、坐标和尝试次数的格式化字符串。
+    """
+    
+    from gui_agent import run_agent_task
+    '''
+        if is_success:
+            return {
+                "status": "success", 
+                "reason": reason,
+                "coords": req_data['coords'], 
+                "attempts": attempt + 1
+            }
+            
+    return {
+        "status": "failed", 
+        "reason": "Max attempts reached"
+    }
+    '''
+    response = run_agent_task(intent, max_attempts, gui_client_url)
+    result = ""
+    if response.get("status") == "success":
+        result += f'''操作成功：
+结果：{response.get("reason")}
+坐标：{response.get("coords")}
+尝试次数：{response.get("attempts")}'''
+
+    if response.get("status") == "failed":
+        result += f'''操作失败：
+结果：{response.get("reason")}
+尝试次数：已达到最大尝试次数'''
+
+
+    return result
 
 
 if __name__ == "__main__":
-    import time
+    # import time
     
 
-    # 1. 双击打开
-    mouse_double_click(x=39, y=46) 
-    time.sleep(2) # 窗口渲染需要时间
+    # # 1. 双击打开
+    # mouse_double_click(x=39, y=46) 
+    # time.sleep(2) # 窗口渲染需要时间
     
-    # 2. 关键：点击窗口的大致位置（通常是中心或标题栏）来把窗口“提”到最前面
-    # 这里我们点击屏幕中心 [960, 540]
-    mouse_click(x=900, y=600)
-    time.sleep(0.5)
+    # # 2. 关键：点击窗口的大致位置（通常是中心或标题栏）来把窗口“提”到最前面
+    # # 这里我们点击屏幕中心 [960, 540]
+    # mouse_click(x=900, y=600)
+    # time.sleep(0.5)
+    print("." * 50)
+    # intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.2.16:8000/execute"
+    intent = input("请输出你的操作意图：")
+    max_attempts = 5
+    gui_client_url = "http://192.168.68.15:8000/execute"
     
+    
+    print("*" * 50, f'\n{run_for_agent(intent=intent, max_attempts=max_attempts, gui_client_url=gui_client_url)}')

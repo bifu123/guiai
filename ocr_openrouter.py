@@ -1,4 +1,3 @@
-# ocr_service.py
 import os
 import json
 import base64
@@ -7,14 +6,17 @@ import re
 from io import BytesIO
 from PIL import Image
 
-class QwenDetector:
-    """职责：利用 Qwen-VL-OCR 模型将视觉文字转化为物理像素坐标"""
+class OpenRouterDetector:
+    """职责：利用 OpenRouter 上的免费视觉模型将视觉文字转化为物理像素坐标"""
     
     def __init__(self, api_key=None):
         # 优先从环境变量获取，或者手动填入
-        self.api_key = api_key or "sk-ed114e4d50c048c6a485c453ab2b9756" 
-        self.model = "qwen-vl-ocr-latest"
-        self.base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+        self.api_key = api_key or "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" 
+        # 使用支持视觉的免费模型，例如 google/gemini-2.5-flash:free 或 qwen/qwen-vl-plus:free
+        # 注意：baidu/qianfan-ocr-fast:free 可能不支持标准的 chat/completions 视觉输入格式
+        # 这里我们使用一个通用的免费视觉模型
+        self.model = "baidu/qianfan-ocr-fast:free"
+        self.base_url = "https://openrouter.ai/api/v1/chat/completions"
 
     def get_target_coords(self, image_source, target_name, max_retries=3):
         """
@@ -59,7 +61,9 @@ class QwenDetector:
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/guiai",
+            "X-Title": "GUI AI Agent"
         }
 
         # 3. 重试循环：解析失败时把错误反馈给模型，让它修正
@@ -89,7 +93,7 @@ class QwenDetector:
             }
 
             try:
-                print(f"正在请求 Qwen-OCR 定位: {target_name} (尝试 {attempt + 1}/{max_retries}) ...")
+                print(f"正在请求 OpenRouter ({self.model}) 定位: {target_name} (尝试 {attempt + 1}/{max_retries}) ...")
                 response = requests.post(self.base_url, json=payload, headers=headers, timeout=30)
                 response.raise_for_status()
                 res_json = response.json()
@@ -155,6 +159,8 @@ class QwenDetector:
                     continue
                 else:
                     print(f"定位业务执行失败，已达到最大重试次数: {e}")
+                    if 'response' in locals() and hasattr(response, 'text'):
+                        print(f"API 响应: {response.text}")
                     return None
 
         print(f"定位目标 {target_name} 失败，已重试 {max_retries} 次。")
@@ -162,13 +168,10 @@ class QwenDetector:
 
 # --- 完整测试入口 ---
 if __name__ == "__main__":
-    # ⚠️ 请确保你的 API KEY 已设置或在此处手动替换
-    MY_API_KEY = "sk-7d48078fa897417c9dssdfsda70d95f9a" # 示例 Key
-    
     # 初始化检测器
-    detector = QwenDetector(api_key=MY_API_KEY)
+    detector = OpenRouterDetector()
     
-    # 测试图片路径（请确保目录下有 test.jpg）
+    # 测试图片路径（请确保目录下有 test.png）
     test_image = "test.png" 
     target = "此电脑"
     

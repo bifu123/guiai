@@ -23,4 +23,5 @@ back/
 .venv
 *.bak
 workspace/
-upload/
+build/
+dist/
