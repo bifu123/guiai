@@ -260,7 +260,7 @@ if __name__ == "__main__":
     # intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.2.16:8000/execute"
     intent = input("请输出你的操作意图：")
     max_attempts = 5
-    gui_client_url = "http://192.168.68.15:8000/execute"
+    gui_client_url = "http://192.168.2.17:8000/execute"
     
     
     print("*" * 50, f'\n{run_for_agent(intent=intent, max_attempts=max_attempts, gui_client_url=gui_client_url)}')

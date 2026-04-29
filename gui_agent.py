@@ -97,11 +97,19 @@ def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://19
         print(f"\n--- 第 {attempt + 1}/{max_attempts} 次尝试 ---")
         
         # --- 1. 初始截图 ---
-        initial_res = requests.post(gui_client_url, json={
-            "action": "screenshot",
-            "coords": [0, 0]
-        }).json()
+        try:
+            initial_res = requests.post(gui_client_url, json={
+                "action": "screenshot",
+                "coords": [0, 0]
+            }).json()
+        except Exception as e:
+            print(f"请求截图失败: {e}")
+            return {"status": "failed", "reason": f"请求截图失败: {e}"}
+            
         current_screenshot = initial_res.get("screenshot")
+        if not current_screenshot:
+            print(f"获取截图失败，服务端返回: {initial_res}")
+            return {"status": "failed", "reason": f"获取截图失败: {initial_res.get('detail', '未知错误')}"}
         # print(f'[GUI] - step 1 - 初始截图:\n {current_screenshot[50]}...')
         
         # --- 2. 决策：理解意图并提取目标 ---

@@ -24,6 +24,10 @@ class QwenDetector:
         :param max_retries: 解析失败时最多重试次数（含首次）
         """
         # 1. 统一处理图片源并获取原始尺寸（关键职责：防止偏移）
+        if not image_source:
+            print("错误：传入的 image_source 为空")
+            return None
+            
         if isinstance(image_source, str) and not image_source.startswith(('data:', 'iVBO')):
             # 说明是文件路径
             if not os.path.exists(image_source):
