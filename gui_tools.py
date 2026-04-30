@@ -408,7 +408,7 @@ if __name__ == "__main__":
         print("." * 50)
         intent = input("请输出你的操作意图：")
         max_attempts = 5
-        gui_client_url = "http://192.168.2.16:8000/execute"
+        gui_client_url = "http://192.168.68.15:8000/execute"
         print("*" * 50, f'\n{run_for_agent(intent=intent, max_attempts=max_attempts, gui_client_url=gui_client_url, show_img=True)}')
         
     elif choice == "2":
