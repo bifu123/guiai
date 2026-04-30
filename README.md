@@ -1,3 +1,5 @@
+# Ylbot GUI Agent
+
 目前业界的 GUI Agent 主要分为三大流派，而我们目前的架构实际上是__集大成者的混合架构（Hybrid Architecture）__。
 
 ### 1. 业界三大流派 vs 我们的实现
@@ -230,3 +232,9 @@ curl -X POST http://192.168.2.16:8000/execute \
            "text": "ctrl+v"
          }'
 ```
+
+## 项目地址
+https://wwww.github.com/bifu123/guiai
+
+## 联系方式
+QQ: 415135222

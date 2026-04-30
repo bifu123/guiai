@@ -1,15 +1,22 @@
 # gui_vl.py
 import base64
 import time
+import os
 from zhipuai import ZhipuAI
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def encode_image(image_path):
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode('utf-8')
 
 def glm_4_6v_flash(text, image_base64=None):
-    # 你的 API Key 保持不变
-    client = ZhipuAI(api_key="72932f11433b34acc283470ab987f86e.ctxyPjOALSRrxnox")
+    # 从环境变量获取 API Key
+    api_key = os.getenv("ZHIPU_API_KEY")
+    if not api_key:
+        raise ValueError("未找到 ZHIPU_API_KEY 环境变量，请在 .env 文件中配置")
+    client = ZhipuAI(api_key=api_key)
     
     # 如果传入了 base64 则直接使用，否则读取 test.png
     img_data = image_base64 if image_base64 else encode_image("test.png")

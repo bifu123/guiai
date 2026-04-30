@@ -15,6 +15,7 @@ guiai/
 .idea/
 .DS_Store
 Thumbs.db
+.env
 
 # --- 你的自定义目录 ---
 back/

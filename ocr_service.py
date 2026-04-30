@@ -15,7 +15,9 @@ class QwenDetector:
     
     def __init__(self, api_key=None):
         # 优先从环境变量获取，或者手动填入
-        self.api_key = api_key or "sk-ed114e4d50c048c6a485c453ab2b9756" 
+        self.api_key = api_key or os.getenv("QWEN_OCR_API_KEY")
+        if not self.api_key:
+            raise ValueError("未找到 QWEN_OCR_API_KEY 环境变量，请在 .env 文件中配置")
         self.model = "qwen-vl-ocr-latest"
         self.base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
 
@@ -208,11 +210,8 @@ class QwenDetector:
 
 # --- 完整测试入口 ---
 if __name__ == "__main__":
-    # ⚠️ 请确保你的 API KEY 已设置或在此处手动替换
-    MY_API_KEY = "sk-7d48078fa897417c9dssdfsda70d95f9a" # 示例 Key
-    
     # 初始化检测器
-    detector = QwenDetector(api_key=MY_API_KEY)
+    detector = QwenDetector()
     
     # 测试图片路径（请确保目录下有 test.jpg）
     test_image = "test.png" 

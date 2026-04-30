@@ -11,7 +11,9 @@ class OpenRouterDetector:
     
     def __init__(self, api_key=None):
         # 优先从环境变量获取，或者手动填入
-        self.api_key = api_key or "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" 
+        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
+        if not self.api_key:
+            raise ValueError("未找到 OPENROUTER_API_KEY 环境变量，请在 .env 文件中配置")
         # 使用支持视觉的免费模型，例如 google/gemini-2.5-flash:free 或 qwen/qwen-vl-plus:free
         # 注意：baidu/qianfan-ocr-fast:free 可能不支持标准的 chat/completions 视觉输入格式
         # 这里我们使用一个通用的免费视觉模型
@@ -168,6 +170,9 @@ class OpenRouterDetector:
 
 # --- 完整测试入口 ---
 if __name__ == "__main__":
+    from dotenv import load_dotenv
+    load_dotenv()
+    
     # 初始化检测器
     detector = OpenRouterDetector()
     
