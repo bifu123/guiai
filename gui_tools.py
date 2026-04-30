@@ -203,6 +203,119 @@ def scroll_screen(
 
 
 #----------------------------
+#  手动流程自动化工具
+#----------------------------
+from typing import Union
+import os
+import json
+
+def execute_manual_flow(
+    flow_data: Union[List[Dict[str, Any]], str], 
+    endpoint: str = "http://192.168.2.16:8000/execute",
+    time_sleep: float = 3.0
+) -> Dict[str, Any]:
+    """
+    顺次执行手动定义的流程自动化列表。
+    
+    Args:
+        flow_data (Union[List[Dict], str]): 包含操作步骤的列表，或者 JSON 文件的路径。
+            列表元素格式如：
+            {
+                "auto": {
+                    "action": "double_click",
+                    "coords": [39, 945],
+                    "text": "",
+                    "key": ""
+                },
+                "description": "打开浏览器"
+            }
+        endpoint (str): GUI 执行器的 URL 地址。
+        time_sleep (float): 每一步执行后的等待时间（秒），默认 3.0 秒。
+        
+    Returns:
+        Dict: 包含最终执行状态、最后一步的截图 base64 等信息。
+    """
+    import time
+    
+    # 1. 参数校验与解析
+    flow_list = []
+    if isinstance(flow_data, str):
+        if not os.path.exists(flow_data):
+            return {"status": "failed", "reason": f"文件不存在: {flow_data}"}
+        try:
+            with open(flow_data, 'r', encoding='utf-8') as f:
+                flow_list = json.load(f)
+        except Exception as e:
+            return {"status": "failed", "reason": f"读取或解析 JSON 文件失败: {e}"}
+    elif isinstance(flow_data, list):
+        flow_list = flow_data
+    else:
+        return {"status": "failed", "reason": "flow_data 必须是列表或文件路径字符串"}
+
+    if not flow_list:
+        return {"status": "failed", "reason": "流程列表为空"}
+
+    # 2. 校验列表格式
+    for i, step in enumerate(flow_list):
+        if not isinstance(step, dict) or "auto" not in step:
+            return {"status": "failed", "reason": f"第 {i+1} 步格式错误，缺少 'auto' 键"}
+        auto_data = step["auto"]
+        if "action" not in auto_data or "coords" not in auto_data:
+            return {"status": "failed", "reason": f"第 {i+1} 步格式错误，'auto' 中缺少 'action' 或 'coords'"}
+
+    print("\n========== 开始执行手动流程自动化 ==========")
+    last_screenshot = None
+    
+    for i, step in enumerate(flow_list):
+        description = step.get("description", f"步骤 {i+1}")
+        auto_data = step.get("auto", {})
+        
+        print(f"[{i+1}/{len(flow_list)}] 正在执行: {description}")
+        
+        # 构造请求 payload
+        payload = {
+            "action": auto_data.get("action", "click"),
+            "coords": auto_data.get("coords", [0, 0]),
+            "text": auto_data.get("text", ""),
+            "key": auto_data.get("key", ""),
+            "session_id": "manual_flow_session" # 使用固定 session_id 保持连贯性
+        }
+        
+        # 调用执行器
+        res = _call_executor(payload, endpoint)
+        
+        if res.get("status") != "success":
+            error_msg = f"执行失败: {description}。原因: {res.get('message', res.get('reason', '未知错误'))}"
+            print(f"❌ {error_msg}")
+            return {
+                "status": "failed",
+                "error_step": i + 1,
+                "description": description,
+                "reason": error_msg,
+                "screenshot": res.get("screenshot")
+            }
+            
+        print(f"✅ 成功: {description}")
+        last_screenshot = res.get("screenshot")
+        
+        # 步骤之间稍微停顿，等待界面响应
+        if i < len(flow_list) - 1:
+            print(f"等待 {time_sleep} 秒...")
+            time.sleep(time_sleep)
+        
+    print("========== 手动流程自动化执行完毕 ==========\n")
+    
+    # 释放 session 锁
+    _call_executor({"action": "release_lock", "coords": [0, 0], "session_id": "manual_flow_session"}, endpoint)
+    
+    return {
+        "status": "success",
+        "message": "所有步骤执行完毕",
+        "total_steps": len(flow_list),
+        "screenshot": last_screenshot
+    }
+
+#----------------------------
 #  agent工具
 #----------------------------
 def run_for_agent(intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.2.16:8000/execute", show_img:bool=False, history:list=None):
@@ -256,22 +369,77 @@ def run_for_agent(intent:str, max_attempts:int=5, gui_client_url:str="http://192
 
 
 if __name__ == "__main__":
-    # import time
+    import json
     
-
-    # # 1. 双击打开
-    # mouse_double_click(x=39, y=46) 
-    # time.sleep(2) # 窗口渲染需要时间
+    print("请选择测试模式：")
+    print("1. 测试 Agent 自然语言意图执行")
+    print("2. 测试手动流程自动化 (执行 test.py 中的数据)")
+    choice = input("请输入选项 (1 或 2): ")
     
-    # # 2. 关键：点击窗口的大致位置（通常是中心或标题栏）来把窗口“提”到最前面
-    # # 这里我们点击屏幕中心 [960, 540]
-    # mouse_click(x=900, y=600)
-    # time.sleep(0.5)
-    print("." * 50)
-    # intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.2.16:8000/execute"
-    intent = input("请输出你的操作意图：")
-    max_attempts = 5
-    gui_client_url = "http://192.168.2.16:8000/execute"
-    
-    
-    print("*" * 50, f'\n{run_for_agent(intent=intent, max_attempts=max_attempts, gui_client_url=gui_client_url, show_img=True)}')
+    if choice == "1":
+        print("." * 50)
+        intent = input("请输出你的操作意图：")
+        max_attempts = 5
+        gui_client_url = "http://192.168.2.16:8000/execute"
+        print("*" * 50, f'\n{run_for_agent(intent=intent, max_attempts=max_attempts, gui_client_url=gui_client_url, show_img=True)}')
+        
+    elif choice == "2":
+        print("." * 50)
+        print("请选择数据来源：")
+        print("A. 使用内置测试列表")
+        print("B. 读取 record_flow.json 文件")
+        sub_choice = input("请输入选项 (A 或 B): ").strip().upper()
+        json_file = input("请输入轨迹文件路径：")
+        
+        if sub_choice == "A":
+            print("正在加载内置流程数据...")
+            test_flow = [
+                {
+                    "auto": {
+                        "action": "double_click",
+                        "coords": [38, 35],
+                        "text": "",
+                        "key": ""
+                    },
+                    "description": "打开我的电脑"
+                },
+                {
+                    "auto": {
+                        "action": "double_click",
+                        "coords": [460, 147],
+                        "text": "",
+                        "key": ""
+                    },
+                    "description": "双击最大化窗口"
+                },
+                {
+                    "auto": {
+                        "action": "double_click",
+                        "coords": [1048, 259],
+                        "text": "",
+                        "key": ""
+                    },
+                    "description": "打开E盘"
+                }
+            ]
+            result = execute_manual_flow(test_flow)
+        elif sub_choice == "B":
+            print("正在读取 record_flow.json...")
+            result = execute_manual_flow(rf'{json_file}')
+        else:
+            print("无效的选项。")
+            exit()
+        
+        print("\n最终执行结果:")
+        # 如果截图存在，打印前 50 个字符作为示意，保留完整数据在字典中
+        if "screenshot" in result and result["screenshot"]:
+            screenshot_preview = result["screenshot"][:50] + "..."
+            print(f"截图(base64前50字符): {screenshot_preview}")
+            # 为了控制台打印不刷屏，我们在打印 JSON 时临时替换一下，但 result 字典里依然是完整的 base64
+            print_result = result.copy()
+            print_result["screenshot"] = screenshot_preview
+            print(json.dumps(print_result, ensure_ascii=False, indent=4))
+        else:
+            print(json.dumps(result, ensure_ascii=False, indent=4))
+    else:
+        print("无效的选项。")

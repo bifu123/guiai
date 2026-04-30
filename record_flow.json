@@ -1,0 +1,38 @@
+[
+    {
+        "auto": {
+            "action": "double_click",
+            "coords": [
+                34,
+                41
+            ],
+            "text": "",
+            "key": ""
+        },
+        "description": "双击打开我的电脑"
+    },
+    {
+        "auto": {
+            "action": "double_click",
+            "coords": [
+                1051,
+                255
+            ],
+            "text": "",
+            "key": ""
+        },
+        "description": "打开E盘"
+    },
+    {
+        "auto": {
+            "action": "click",
+            "coords": [
+                1909,
+                4
+            ],
+            "text": "",
+            "key": ""
+        },
+        "description": "关闭窗口"
+    }
+]

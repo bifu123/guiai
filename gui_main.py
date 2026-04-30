@@ -168,6 +168,17 @@ def execute_action(req: ActionRequest):
             # 滚轮操作业务
             pyautogui.scroll(-500 if req.text == "down" else 500, x=x, y=y)
             
+        elif req.action == "drag":
+            # 拖拽业务
+            # req.coords 是起点，req.text 包含终点坐标 "end_x,end_y"
+            try:
+                end_x_str, end_y_str = req.text.split(',')
+                end_x, end_y = int(end_x_str), int(end_y_str)
+                pyautogui.moveTo(x, y)
+                pyautogui.dragTo(end_x, end_y, duration=0.5, button='left')
+            except Exception as e:
+                print(f"拖拽参数解析失败: {e}")
+                
         elif req.action == "window_control":
             # 窗口控制业务：maximize, minimize, close
             if req.coords != [0, 0]:
