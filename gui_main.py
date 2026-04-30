@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw
 from io import BytesIO
 from pydantic import BaseModel
 from typing import List, Optional
+import uiautomation as auto
 
 # --- 0. 解决 PyInstaller --noconsole 模式下 stdout/stderr 丢失导致崩溃的问题 ---
 if sys.stdout is None:
@@ -45,9 +46,9 @@ session_lock = threading.Lock() # 用于保护 session 变量的并发修改
 
 # 定义数据结构业务
 class ActionRequest(BaseModel):
-    action: str            # 动作类型: click, double_click, type, scroll, key_press, hotkey, screenshot, release_lock
+    action: str            # 动作类型: click, double_click, type, scroll, key_press, hotkey, screenshot, release_lock, find_element
     coords: List[int]      # 物理像素坐标: [x, y]
-    text: Optional[str] = "" # 输入的内容
+    text: Optional[str] = "" # 输入的内容或查找的元素名称
     key: Optional[str] = ""  # 特殊按键 (Enter, Tab 等)
     session_id: str = ""   # 任务会话 ID，用于独占控制
 
@@ -99,7 +100,43 @@ def execute_action(req: ActionRequest):
         print(f"执行业务: {req.action} | 坐标: {req.coords} | 内容: {req.text or req.key} | Session: {req.session_id}")
 
         # --- 分发动作职责 ---
-        if req.action == "screenshot":
+        if req.action == "find_element":
+            # UIAutomation 查找元素业务
+            target_name = req.text
+            print(f"正在使用 UIAutomation 查找元素: {target_name}")
+            
+            # 设置查找超时时间（秒）
+            auto.SetGlobalSearchTimeout(2.0)
+            
+            # 尝试查找包含该名称的控件
+            # 这里使用 Control(searchDepth=8) 限制搜索深度，避免全树搜索太慢
+            # Name 属性通常对应屏幕上显示的文本
+            # 注意：在多线程中使用 UIAutomation 需要初始化 COM
+            with auto.UIAutomationInitializerInThread():
+                control = auto.Control(Name=target_name, searchDepth=8)
+                
+                if control.Exists(0, 0):
+                    rect = control.BoundingRectangle
+                    # 计算中心点坐标
+                    center_x = rect.left + (rect.right - rect.left) // 2
+                    center_y = rect.top + (rect.bottom - rect.top) // 2
+                    print(f"UIAutomation 找到元素 '{target_name}'，中心坐标: [{center_x}, {center_y}]")
+                    return {
+                        "status": "success",
+                        "action_performed": "find_element",
+                        "coords": [center_x, center_y],
+                        "screenshot": capture_screen_base64() # 保持接口一致性
+                    }
+                else:
+                    print(f"UIAutomation 未找到元素 '{target_name}'")
+                    return {
+                        "status": "failed",
+                        "action_performed": "find_element",
+                        "reason": "Element not found by UIAutomation",
+                        "screenshot": capture_screen_base64()
+                    }
+
+        elif req.action == "screenshot":
             # 仅拍照业务
             pass
 

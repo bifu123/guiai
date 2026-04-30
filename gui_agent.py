@@ -44,25 +44,31 @@ def ask_vlm_for_action(screenshot_base64, user_intent):
 【执行职责】：
 1. 判断用户意图的类型：
    - 如果用户想查看屏幕内容、询问当前状态、要求描述画面等（没有明确要操作某个图标/按钮），则 action_type 为 "query"
-   - 如果用户想打开程序、点击按钮、输入文字等（有明确的操作目标），则 action_type 为 "operate"
+   - 如果用户想打开程序、点击按钮、输入文字、滚动页面、使用快捷键等（有明确的操作目标或动作），则 action_type 为 "operate"
 
 2. 如果 action_type 为 "operate"，请进一步：
-   - 提取出需要操作的目标名称（如"此电脑"、"回收站"、"浏览器"等）
-   - 确定需要执行的动作：
+   - 提取出需要操作的目标名称（如"此电脑"、"回收站"、"浏览器"等，如果没有具体目标则留空）
+   - 确定需要执行的动作（action）：
      - `click` - 单击（一般用于获得焦点、单击网页链接、单击普通按钮等）
      - `double_click` - 双击（【重要】在桌面上打开应用、运行程序、打开文件夹/磁盘等，必须使用双击！）
-     - `type` - 输入值
+     - `type` - 输入文字（此时必须在 text 字段提供要输入的文字）
+     - `scroll` - 滚动页面（此时必须在 text 字段提供 "down" 或 "up"）
+     - `key_press` - 按下单个按键（此时必须在 key 字段提供按键名，如 "enter", "esc", "backspace"）
+     - `hotkey` - 组合快捷键（此时必须在 text 字段提供组合键，如 "ctrl+c", "alt+f4"）
+     - `window_control` - 窗口控制（此时必须在 text 字段提供 "maximize", "minimize" 或 "close"）
    - 观察截图，找到目标在画面中的位置，并输出其中心点的归一化坐标（0-1000）：
-     - norm_x: 0-1000 的整数（如果找不到目标，请输出 -1）
-     - norm_y: 0-1000 的整数（如果找不到目标，请输出 -1）
+     - norm_x: 0-1000 的整数（如果找不到目标或不需要坐标，请输出 -1）
+     - norm_y: 0-1000 的整数（如果找不到目标或不需要坐标，请输出 -1）
 
 请以 JSON 格式返回：
 {{
     "action_type": "operate 或 query",
-    "target": "目标名称（operate 时必填，query 时留空）",
+    "target": "目标名称（operate 时尽量填写，没有则留空，query 时留空）",
     "action": "动作类型（operate 时必填，query 时留空）",
-    "norm_x": 整数（0-1000，operate 时必填）,
-    "norm_y": 整数（0-1000，operate 时必填）,
+    "text": "输入文字、滚动方向或组合键（根据 action 类型填写，否则留空）",
+    "key": "单键名称（仅当 action 为 key_press 时填写，否则留空）",
+    "norm_x": 整数（0-1000，operate 时必填，不需要坐标填 -1）,
+    "norm_y": 整数（0-1000，operate 时必填，不需要坐标填 -1）,
     "reason": "判断理由"
 }}
 """
@@ -350,40 +356,65 @@ def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://19
                 obj = task.get("object")
                 target_type = task.get("target_type", "text")
                 
-                if target_type == "icon":
-                    print(f"-> 目标 '{location}' 被判定为图标/语义概念，跳过 OCR，直接交由 VLM 处理")
-                    fallback_intent = f"{predicate}{obj}"
-                    res = _execute_single_task(fallback_intent, max_attempts, gui_client_url, show_img, use_ocr=False, session_id=session_id)
-                    final_results.append(res)
-                    if res.get("status") == "failed":
-                        print(f"子任务执行失败，终止后续任务。原因: {res.get('reason')}")
-                        break
-                    continue
-                    
-                print(f"-> 尝试直接 OCR 定位: {location}")
+                print(f"-> 尝试使用 UIAutomation 定位: {location}")
+                coords_result = None
                 
-                # 获取当前截图
+                # 1. 尝试 UIA 定位 (无论 target_type 是 text 还是 icon，都先尝试 UIA)
                 try:
-                    initial_res = requests.post(gui_client_url, json={"action": "screenshot", "coords": [0, 0], "session_id": session_id})
-                    if initial_res.status_code == 429:
-                        print("服务端返回 429: 当前有其他任务正在执行")
-                        final_results.append({"status": "failed", "reason": "当前有其他任务正在执行，请稍后再试"})
-                        break
-                    initial_res = initial_res.json()
-                    current_screenshot = initial_res.get("screenshot")
-                except Exception as e:
-                    print(f"请求截图失败: {e}")
-                    final_results.append({"status": "failed", "reason": f"请求截图失败: {e}"})
-                    break
+                    uia_res = requests.post(gui_client_url, json={
+                        "action": "find_element",
+                        "coords": [0, 0],
+                        "text": location,
+                        "session_id": session_id
+                    }, timeout=5).json()
                     
-                # 尝试 OCR 定位
-                coords_result = qwen_detector.get_target_coords(current_screenshot, location)
+                    if uia_res.get("status") == "success":
+                        coords_result = {"x": uia_res["coords"][0], "y": uia_res["coords"][1]}
+                        print(f"-> UIAutomation 定位成功，物理坐标: {coords_result}")
+                        current_screenshot = uia_res.get("screenshot")
+                    else:
+                        print(f"-> UIAutomation 未找到目标 '{location}'")
+                except Exception as e:
+                    print(f"-> UIAutomation 请求失败: {e}")
+                
+                # 2. 如果 UIA 失败，根据 target_type 决定降级策略
+                if not coords_result:
+                    if target_type == "icon":
+                        print(f"-> 目标 '{location}' 被判定为图标/语义概念，且 UIA 未找到，跳过 OCR，直接交由 VLM 处理")
+                        fallback_intent = f"{predicate}{obj}"
+                        res = _execute_single_task(fallback_intent, max_attempts, gui_client_url, show_img, use_ocr=False, session_id=session_id)
+                        final_results.append(res)
+                        if res.get("status") == "failed":
+                            print(f"子任务执行失败，终止后续任务。原因: {res.get('reason')}")
+                            break
+                        continue
+                    
+                    print(f"-> 尝试直接 OCR 定位: {location}")
+                    
+                    # 获取当前截图
+                    try:
+                        initial_res = requests.post(gui_client_url, json={"action": "screenshot", "coords": [0, 0], "session_id": session_id})
+                        if initial_res.status_code == 429:
+                            print("服务端返回 429: 当前有其他任务正在执行")
+                            final_results.append({"status": "failed", "reason": "当前有其他任务正在执行，请稍后再试"})
+                            break
+                        initial_res = initial_res.json()
+                        current_screenshot = initial_res.get("screenshot")
+                    except Exception as e:
+                        print(f"请求截图失败: {e}")
+                        final_results.append({"status": "failed", "reason": f"请求截图失败: {e}"})
+                        break
+                        
+                    # 尝试 OCR 定位
+                    coords_result = qwen_detector.get_target_coords(current_screenshot, location)
+                    if coords_result:
+                        print(f"-> OCR 定位成功，物理坐标: {coords_result}")
                 
                 if coords_result:
-                    # OCR 找到了，直接执行动作
+                    # UIA 或 OCR 找到了，直接执行动作
                     coords = [coords_result["x"], coords_result["y"]]
                     action = _map_predicate_to_action(predicate)
-                    print(f"-> OCR 定位成功，物理坐标: {coords}，映射动作: {action}")
+                    print(f"-> 准备执行动作: {action}，坐标: {coords}")
                     
                     req_data = {
                         "action": action,
