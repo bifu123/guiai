@@ -51,24 +51,28 @@ class QwenDetector:
             img_base64 = image_source.replace('data:image/png;base64,', '')
 
         # 2. 构建初始 Prompt
-        base_prompt = f"""任务：在图片中寻找文字或图标“{target_name}”。
+        base_prompt = f"""任务：在图片中寻找文字“{target_name}”。
 
 【输出格式要求（必须严格遵守）】：
 1. 只输出一个 JSON 对象，不要包含任何其他文字、解释或 markdown 标记。
-2. 如果在图片中找到了目标，请输出其中心位置的归一化坐标（0-1000之间的整数）：
-{{"norm_x": 整数, "norm_y": 整数}}
-3. 如果在图片中**没有找到**目标，请输出：
-{{"norm_x": -1, "norm_y": -1}}
+2. 你必须首先判断图片中是否存在该文字目标。
+3. 请严格按照以下 JSON 格式输出：
+{{
+    "found": true 或 false,
+    "norm_x": 整数 (如果 found 为 true，输出中心点 x 坐标；如果为 false，输出 -1),
+    "norm_y": 整数 (如果 found 为 true，输出中心点 y 坐标；如果为 false，输出 -1)
+}}
 
 【示例】：
-如果目标在图片正中央，输出：{{"norm_x": 500, "norm_y": 500}}
-如果图片中没有该目标，输出：{{"norm_x": -1, "norm_y": -1}}
+如果目标在图片正中央，输出：{{"found": true, "norm_x": 500, "norm_y": 500}}
+如果图片中没有该目标，输出：{{"found": false, "norm_x": -1, "norm_y": -1}}
 
 【警告】：
 - 绝对不要输出文本框的四个角坐标！
 - 绝对不要输出多个数字（如 488, 418, 15, 57, 90 是错误的）！
 - 只输出一个中心点坐标！
-- 不要使用引号包裹数字！"""
+- 坐标值必须是 0-1000 之间的整数！
+- 不要使用引号包裹数字或布尔值！"""
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -109,47 +113,61 @@ class QwenDetector:
                 content = res_json["choices"][0]["message"]["content"]
                 
                 # 4. 解析模型返回的坐标
-                # 增强正则：处理模型可能返回的非法 JSON，如 {"norm_x": 488, 418, 15, 57, 90}
-                # 我们只提取第一个数字
-                norm_x_match = re.search(r'"?norm_x"?\s*:\s*(-?\d+(?:\.\d+)?)', content)
-                norm_y_match = re.search(r'"?norm_y"?\s*:\s*(-?\d+(?:\.\d+)?)', content)
-                
-                if norm_x_match and norm_y_match:
-                    norm_x = float(norm_x_match.group(1))
-                    norm_y = float(norm_y_match.group(1))
-                else:
-                    # Fallback 1: 尝试标准的 JSON 解析
-                    clean_content = content.strip()
-                    if "```json" in clean_content:
-                        clean_content = clean_content.split("```json")[1].split("```")[0].strip()
-                    elif "```" in clean_content:
-                        clean_content = clean_content.split("```")[1].split("```")[0].strip()
+                clean_content = content.strip()
+                if "```json" in clean_content:
+                    clean_content = clean_content.split("```json")[1].split("```")[0].strip()
+                elif "```" in clean_content:
+                    clean_content = clean_content.split("```")[1].split("```")[0].strip()
+                    
+                match = re.search(r'\{.*\}', clean_content, re.DOTALL)
+                if not match:
+                    last_error = f"无法从响应中提取 JSON: {content[:100]}..."
+                    print(last_error)
+                    continue
+                    
+                try:
+                    json_str = match.group().replace("'", '"')
+                    # 处理 Python 布尔值首字母大写的问题
+                    json_str = json_str.replace("True", "true").replace("False", "false")
+                    norm_data = json.loads(json_str)
+                    
+                    found = norm_data.get("found", True) # 默认假设找到了，兼容旧格式
+                    
+                    # 如果模型明确表示没找到
+                    if not found or str(found).lower() == "false":
+                        print(f"模型报告：在图片中未找到目标 '{target_name}'")
+                        return None
                         
-                    match = re.search(r'\{.*\}', clean_content, re.DOTALL)
-                    if not match:
-                        last_error = f"无法从响应中提取 JSON: {content[:100]}..."
-                        print(last_error)
-                        continue
+                    norm_x = float(norm_data.get("norm_x", -1))
+                    norm_y = float(norm_data.get("norm_y", -1))
+                    
+                except Exception as e:
+                    # Fallback: 暴力提取数字
+                    print(f"警告: JSON 解析失败 ({e})，尝试正则提取。原始字符串: {content[:100]}...")
+                    
+                    # 检查是否包含 false
+                    if "false" in clean_content.lower():
+                        print(f"模型报告：在图片中未找到目标 '{target_name}'")
+                        return None
                         
-                    try:
-                        json_str = match.group().replace("'", '"')
-                        norm_data = json.loads(json_str)
-                        norm_x = float(norm_data.get("norm_x"))
-                        norm_y = float(norm_data.get("norm_y"))
-                    except Exception as e:
-                        # Fallback 2: 暴力提取数字
-                        # 如果 JSON 解析失败（比如包含了多余的逗号和数字），尝试直接提取前两个数字
+                    norm_x_match = re.search(r'"?norm_x"?\s*:\s*(-?\d+(?:\.\d+)?)', clean_content)
+                    norm_y_match = re.search(r'"?norm_y"?\s*:\s*(-?\d+(?:\.\d+)?)', clean_content)
+                    
+                    if norm_x_match and norm_y_match:
+                        norm_x = float(norm_x_match.group(1))
+                        norm_y = float(norm_y_match.group(1))
+                    else:
                         nums = re.findall(r'-?\d+(?:\.\d+)?', match.group())
                         if len(nums) >= 2:
                             norm_x = float(nums[0])
                             norm_y = float(nums[1])
-                            print(f"警告: JSON 解析失败，但通过正则暴力提取到坐标: norm_x={norm_x}, norm_y={norm_y}")
+                            print(f"警告: 通过正则暴力提取到坐标: norm_x={norm_x}, norm_y={norm_y}")
                         else:
-                            last_error = f"JSON 解析失败且无法提取数字: {e}"
-                            print(f"{last_error}, 原始字符串: {content[:100]}...")
+                            last_error = f"JSON 解析失败且无法提取数字"
+                            print(last_error)
                             continue
 
-                # 检查是否未找到目标
+                # 检查是否未找到目标 (兼容旧的 -1, -1 逻辑)
                 if norm_x == -1 and norm_y == -1:
                     print(f"模型报告：在图片中未找到目标 '{target_name}'")
                     return None

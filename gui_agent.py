@@ -52,12 +52,17 @@ def ask_vlm_for_action(screenshot_base64, user_intent):
      - `click` - 单击（一般用于获得焦点、单击网页链接、单击普通按钮等）
      - `double_click` - 双击（【重要】在桌面上打开应用、运行程序、打开文件夹/磁盘等，必须使用双击！）
      - `type` - 输入值
+   - 观察截图，找到目标在画面中的位置，并输出其中心点的归一化坐标（0-1000）：
+     - norm_x: 0-1000 的整数（如果找不到目标，请输出 -1）
+     - norm_y: 0-1000 的整数（如果找不到目标，请输出 -1）
 
 请以 JSON 格式返回：
 {{
     "action_type": "operate 或 query",
     "target": "目标名称（operate 时必填，query 时留空）",
     "action": "动作类型（operate 时必填，query 时留空）",
+    "norm_x": 整数（0-1000，operate 时必填）,
+    "norm_y": 整数（0-1000，operate 时必填）,
     "reason": "判断理由"
 }}
 """
@@ -120,7 +125,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def _execute_single_task(task_intent: str, max_attempts: int, gui_client_url: str, show_img: bool):
+def _execute_single_task(task_intent: str, max_attempts: int, gui_client_url: str, show_img: bool, use_ocr: bool = True):
     """执行单个子任务（降级到 VLM 逻辑）"""
     print(f"\n>>> 开始执行子任务: {task_intent}")
     reason = "操作失败"
@@ -181,16 +186,41 @@ def _execute_single_task(task_intent: str, max_attempts: int, gui_client_url: st
             print("未能从意图中提取到目标名称。")
             return {"status": "failed", "reason": "No target found"}
 
-        # --- 3. 定位：使用 QwenDetector 获取物理坐标 ---
-        print(f"正在使用 QwenDetector 定位目标: {target_name} ...")
-        coords_result = qwen_detector.get_target_coords(current_screenshot, target_name)
-        
+        # --- 3. 定位 ---
+        coords_result = None
+        if use_ocr:
+            print(f"正在使用 QwenDetector 定位目标: {target_name} ...")
+            coords_result = qwen_detector.get_target_coords(current_screenshot, target_name)
+            
+        if not coords_result:
+            if use_ocr:
+                print(f"OCR 定位失败，尝试使用 VLM 估算的坐标...")
+            else:
+                print(f"跳过 OCR，直接使用 VLM 估算的坐标...")
+                
+            norm_x = decision.get("norm_x", -1)
+            norm_y = decision.get("norm_y", -1)
+            
+            if norm_x != -1 and norm_y != -1:
+                import base64
+                from io import BytesIO
+                from PIL import Image
+                img_data = base64.b64decode(current_screenshot.replace('data:image/png;base64,', ''))
+                with Image.open(BytesIO(img_data)) as img:
+                    width, height = img.size
+                real_x = int(round((norm_x / 1000.0) * width))
+                real_y = int(round((norm_y / 1000.0) * height))
+                coords_result = {"x": real_x, "y": real_y}
+                print(f"VLM 坐标换算成功: 物理坐标 [{real_x}, {real_y}]")
+            else:
+                print(f"VLM 未提供有效坐标。")
+                
         if not coords_result:
             print(f"定位目标 {target_name} 失败。")
             return {"status": "failed", "reason": "Target localization failed"}
             
         coords = [coords_result["x"], coords_result["y"]]
-        print(f"定位成功，物理坐标: {coords}")
+        print(f"最终定位成功，物理坐标: {coords}")
         
         # --- 4. 执行动作 ---
         req_data = {
@@ -265,18 +295,29 @@ def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://19
         if isinstance(task, str):
             # 降级逻辑：无法拆解的指令，直接交给 VLM
             print("-> 触发降级逻辑，交由 VLM 处理")
-            res = _execute_single_task(task, max_attempts, gui_client_url, show_img)
+            res = _execute_single_task(task, max_attempts, gui_client_url, show_img, use_ocr=True)
             final_results.append(res)
             if res.get("status") == "failed":
                 print(f"子任务执行失败，终止后续任务。原因: {res.get('reason')}")
                 break
                 
         elif isinstance(task, dict):
-            # 明确的三元组指令
+            # 明确的四元组指令
             location = task.get("location")
             predicate = task.get("predicate")
             obj = task.get("object")
+            target_type = task.get("target_type", "text")
             
+            if target_type == "icon":
+                print(f"-> 目标 '{location}' 被判定为图标/语义概念，跳过 OCR，直接交由 VLM 处理")
+                fallback_intent = f"{predicate}{obj}"
+                res = _execute_single_task(fallback_intent, max_attempts, gui_client_url, show_img, use_ocr=False)
+                final_results.append(res)
+                if res.get("status") == "failed":
+                    print(f"子任务执行失败，终止后续任务。原因: {res.get('reason')}")
+                    break
+                continue
+                
             print(f"-> 尝试直接 OCR 定位: {location}")
             
             # 获取当前截图
@@ -308,17 +349,47 @@ def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://19
                 print(f"-> 动作执行完成")
                 time.sleep(2)
                 
-                final_results.append({
-                    "status": "success",
-                    "reason": f"直接执行 {predicate} {obj} 成功",
-                    "coords": coords,
-                    "attempts": 1
-                })
+                # --- 新增：验证直接执行的结果 ---
+                print("正在验证直接执行是否成功...")
+                try:
+                    verify_res = requests.post(gui_client_url, json={"action": "screenshot", "coords": [0, 0]}).json()
+                    verify_screenshot = verify_res.get("screenshot")
+                    
+                    verify_intent = f"{predicate}{obj}"
+                    verification = verify_task_success(verify_screenshot, verify_intent)
+                    is_success = verification.get("is_success", False)
+                    reason = verification.get("reason", "未知原因")
+                    
+                    print(f"验证结果: {'成功' if is_success else '失败'} - {reason}")
+                    
+                    if is_success:
+                        final_results.append({
+                            "status": "success",
+                            "reason": f"直接执行 {predicate} {obj} 成功: {reason}",
+                            "coords": coords,
+                            "attempts": 1
+                        })
+                    else:
+                        print(f"-> 直接执行后验证失败，降级交由 VLM 处理")
+                        fallback_intent = f"{predicate}{obj}"
+                        res = _execute_single_task(fallback_intent, max_attempts, gui_client_url, show_img, use_ocr=True)
+                        final_results.append(res)
+                        if res.get("status") == "failed":
+                            print(f"子任务执行失败，终止后续任务。原因: {res.get('reason')}")
+                            break
+                except Exception as e:
+                    print(f"验证过程发生异常: {e}，降级交由 VLM 处理")
+                    fallback_intent = f"{predicate}{obj}"
+                    res = _execute_single_task(fallback_intent, max_attempts, gui_client_url, show_img, use_ocr=True)
+                    final_results.append(res)
+                    if res.get("status") == "failed":
+                        print(f"子任务执行失败，终止后续任务。原因: {res.get('reason')}")
+                        break
             else:
                 # OCR 没找到，说明缺失中间环节，降级给 VLM
                 print(f"-> OCR 未找到目标 '{location}'，可能缺失中间环节，降级交由 VLM 处理")
                 fallback_intent = f"{predicate}{obj}" # 组合成自然语言，如 "打开D盘"
-                res = _execute_single_task(fallback_intent, max_attempts, gui_client_url, show_img)
+                res = _execute_single_task(fallback_intent, max_attempts, gui_client_url, show_img, use_ocr=True)
                 final_results.append(res)
                 if res.get("status") == "failed":
                     print(f"子任务执行失败，终止后续任务。原因: {res.get('reason')}")

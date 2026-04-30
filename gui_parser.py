@@ -23,10 +23,13 @@ def parse_intent(user_input: str, history:list[dict]=None) -> list[Union[dict, s
 你的任务是将用户复杂的自然语言指令，拆解为多个按顺序执行的简单子任务。
 
 【拆解规则】：
-1. 每个子任务必须被拆解为“在什么地方（位置）做什么（谓语-宾语）”的三元组结构。
+1. 每个子任务必须被拆解为“在什么地方（位置）做什么（谓语-宾语）”的四元组结构。
    - location: 动作发生的位置或目标名称（便于 OCR 提取位置坐标，如 "D盘"、"搜索框"、"确定按钮"）。
    - predicate: 动作谓词（便于 VLM 决策动作，如 "打开"、"点击"、"输入"、"按"）。
    - object: 动作的宾语或具体内容（如 "D盘"、"hello world"、"回车"）。
+   - target_type: 目标的类型，必须是 "text" 或 "icon"。
+     - 如果目标是纯文本（如 "运行"、"确定"、"d:"、"搜索框"），则为 "text"。
+     - 如果目标是图标、系统应用或语义概念（如 "开始菜单"、"此电脑"、"回收站"、"微信图标"），则为 "icon"。
 2. 必须严格按照用户意图的执行顺序进行拆分。
 3. 忽略无意义的语气词（如“帮我”、“请”、“然后”等）。
 4. 当用户当前问题无法判断明显的上下文时，必须参考对话历史来推断当前所处的界面或目标。
@@ -39,7 +42,7 @@ def parse_intent(user_input: str, history:list[dict]=None) -> list[Union[dict, s
 你必须严格输出一个 JSON 格式的数组，不要包含任何其他解释性文字或 Markdown 标记。
 如果是动作指令，格式如下：
 [
-  {{"location": "位置", "predicate": "谓语", "object": "宾语"}}
+  {{"location": "位置", "predicate": "谓语", "object": "宾语", "target_type": "text或icon"}}
 ]
 如果是查询指令或无法拆解，格式如下：
 [
@@ -50,23 +53,23 @@ def parse_intent(user_input: str, history:list[dict]=None) -> list[Union[dict, s
 输入：帮我打开D盘，然后打开test文件夹
 输出：
 [
-  {{"location": "D盘", "predicate": "打开", "object": "D盘"}},
-  {{"location": "test文件夹", "predicate": "打开", "object": "test文件夹"}}
+  {{"location": "D盘", "predicate": "打开", "object": "D盘", "target_type": "icon"}},
+  {{"location": "test文件夹", "predicate": "打开", "object": "test文件夹", "target_type": "icon"}}
 ]
 
 输入：先点击左上角的文件，再点击保存，最后关闭窗口
 输出：
 [
-  {{"location": "文件", "predicate": "点击", "object": "文件"}},
-  {{"location": "保存", "predicate": "点击", "object": "保存"}},
-  {{"location": "关闭按钮", "predicate": "点击", "object": "关闭窗口"}}
+  {{"location": "文件", "predicate": "点击", "object": "文件", "target_type": "text"}},
+  {{"location": "保存", "predicate": "点击", "object": "保存", "target_type": "text"}},
+  {{"location": "关闭按钮", "predicate": "点击", "object": "关闭窗口", "target_type": "icon"}}
 ]
 
 输入：在搜索框输入hello world，然后按回车
 输出：
 [
-  {{"location": "搜索框", "predicate": "输入", "object": "hello world"}},
-  {{"location": "回车键", "predicate": "按", "object": "回车"}}
+  {{"location": "搜索框", "predicate": "输入", "object": "hello world", "target_type": "text"}},
+  {{"location": "回车键", "predicate": "按", "object": "回车", "target_type": "icon"}}
 ]
 
 【带历史的示例】：
@@ -74,18 +77,18 @@ def parse_intent(user_input: str, history:list[dict]=None) -> list[Union[dict, s
 输入：然后打开test文件夹
 输出：
 [
-  {{"location": "test文件夹", "predicate": "打开", "object": "test文件夹"}}
+  {{"location": "test文件夹", "predicate": "打开", "object": "test文件夹", "target_type": "icon"}}
 ]
 
 对话历史：[{{"role": "user", "content": "打开微信"}}, {{"role": "assistant", "content": "微信已打开"}}]
 输入：发消息给张三说你好
 输出：
 [
-  {{"location": "搜索框", "predicate": "点击", "object": "搜索框"}},
-  {{"location": "搜索框", "predicate": "输入", "object": "张三"}},
-  {{"location": "张三", "predicate": "点击", "object": "张三"}},
-  {{"location": "输入框", "predicate": "输入", "object": "你好"}},
-  {{"location": "发送按钮", "predicate": "点击", "object": "发送"}}
+  {{"location": "搜索框", "predicate": "点击", "object": "搜索框", "target_type": "text"}},
+  {{"location": "搜索框", "predicate": "输入", "object": "张三", "target_type": "text"}},
+  {{"location": "张三", "predicate": "点击", "object": "张三", "target_type": "text"}},
+  {{"location": "输入框", "predicate": "输入", "object": "你好", "target_type": "text"}},
+  {{"location": "发送按钮", "predicate": "点击", "object": "发送", "target_type": "text"}}
 ]
 
 【无法拆解的示例】：
@@ -151,6 +154,6 @@ if __name__ == "__main__":
         print("切分结果:")
         for j, task in enumerate(tasks, 1):
             if isinstance(task, dict):
-                print(f"  步骤 {j}: 在 [{task.get('location', '未知')}] 执行 [{task.get('predicate', '未知')}] -> [{task.get('object', '未知')}]")
+                print(f"  步骤 {j}: 在 [{task.get('location', '未知')}] 执行 [{task.get('predicate', '未知')}] -> [{task.get('object', '未知')}] (类型: {task.get('target_type', '未知')})")
             else:
                 print(f"  步骤 {j}: [原样返回] {task}")
