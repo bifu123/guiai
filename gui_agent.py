@@ -125,7 +125,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def _execute_single_task(task_intent: str, max_attempts: int, gui_client_url: str, show_img: bool, use_ocr: bool = True):
+def _execute_single_task(task_intent: str, max_attempts: int, gui_client_url: str, show_img: bool, use_ocr: bool = True, session_id: str = ""):
     """执行单个子任务（降级到 VLM 逻辑）"""
     print(f"\n>>> 开始执行子任务: {task_intent}")
     reason = "操作失败"
@@ -145,8 +145,13 @@ def _execute_single_task(task_intent: str, max_attempts: int, gui_client_url: st
         try:
             initial_res = requests.post(gui_client_url, json={
                 "action": "screenshot",
-                "coords": [0, 0]
-            }).json()
+                "coords": [0, 0],
+                "session_id": session_id
+            })
+            if initial_res.status_code == 429:
+                print("服务端返回 429: 当前有其他任务正在执行")
+                return {"status": "failed", "reason": "当前有其他任务正在执行，请稍后再试"}
+            initial_res = initial_res.json()
         except Exception as e:
             print(f"请求截图失败: {e}")
             return {"status": "failed", "reason": f"请求截图失败: {e}"}
@@ -157,8 +162,13 @@ def _execute_single_task(task_intent: str, max_attempts: int, gui_client_url: st
             return {"status": "failed", "reason": f"获取截图失败: {initial_res.get('detail', '未知错误')}"}
         
         # --- 2. 决策：理解意图并提取目标 ---
-        decision = ask_vlm_for_action(current_screenshot, task_intent)
-        print(f"Agent 决策理由: {decision.get('reason')}")
+        try:
+            decision = ask_vlm_for_action(current_screenshot, task_intent)
+            print(f"Agent 决策理由: {decision.get('reason')}")
+        except Exception as e:
+            print(f"解析 VLM 决策响应失败: {e}")
+            reason = f"解析 VLM 决策响应失败: {e}"
+            continue
         
         action_type = decision.get("action_type", "operate")
         
@@ -227,7 +237,8 @@ def _execute_single_task(task_intent: str, max_attempts: int, gui_client_url: st
             "action": action,
             "coords": coords,
             "text": decision.get("text", ""),
-            "key": decision.get("key", "")
+            "key": decision.get("key", ""),
+            "session_id": session_id
         }
         
         response = requests.post(gui_client_url, json=req_data).json()
@@ -240,14 +251,20 @@ def _execute_single_task(task_intent: str, max_attempts: int, gui_client_url: st
         print("正在验证任务是否成功...")
         verify_res = requests.post(gui_client_url, json={
             "action": "screenshot",
-            "coords": [0, 0]
+            "coords": [0, 0],
+            "session_id": session_id
         }).json()
         verify_screenshot = verify_res.get("screenshot")
         
-        verification = verify_task_success(verify_screenshot, task_intent)
-        is_success = verification.get("is_success", False)
-        reason = verification.get("reason", "未知原因")
-        
+        try:
+            verification = verify_task_success(verify_screenshot, task_intent)
+            is_success = verification.get("is_success", False)
+            reason = verification.get("reason", "未知原因")
+        except Exception as e:
+            print(f"解析 VLM 验证响应失败: {e}")
+            reason = f"解析 VLM 验证响应失败: {e}"
+            continue
+            
         print(f"验证结果: {'成功' if is_success else '失败'} - {reason}")
         
         if is_success:
@@ -281,131 +298,171 @@ def _map_predicate_to_action(predicate: str) -> str:
     else:
         return "click" # 默认单击
 
+import uuid
+
 def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.2.16:8000/execute", show_img:bool=False, history:list=None):
     print(f"========== 开始执行总任务: {intent} ==========")
     
-    # 1. 语义切分
-    print("正在进行语义切分...")
-    tasks = parse_intent(intent, history)
-    print(f"切分结果: {tasks}")
+    # 生成本次任务的唯一 Session ID
+    session_id = str(uuid.uuid4())
+    print(f"分配任务 Session ID: {session_id}")
     
-    final_results = []
-    
-    # 2. 遍历执行子任务
-    for i, task in enumerate(tasks):
-        print(f"\n[{i+1}/{len(tasks)}] 处理子任务: {task}")
+    try:
+        # --- 新增：在语义切分前，先尝试获取锁（通过请求一次截图） ---
+        print("正在检查服务端是否空闲...")
+        try:
+            check_res = requests.post(gui_client_url, json={
+                "action": "screenshot",
+                "coords": [0, 0],
+                "session_id": session_id
+            }, timeout=5)
+            if check_res.status_code == 429:
+                print("服务端返回 429: 当前有其他任务正在执行，放弃本次任务")
+                return {"status": "failed", "reason": "当前有其他任务正在执行，请稍后再试"}
+        except Exception as e:
+            print(f"检查服务端状态失败: {e}")
+            return {"status": "failed", "reason": f"无法连接到执行器服务端: {e}"}
+
+        # 1. 语义切分
+        print("正在进行语义切分...")
+        tasks = parse_intent(intent, history)
+        print(f"切分结果: {tasks}")
         
-        if isinstance(task, str):
-            # 降级逻辑：无法拆解的指令，直接交给 VLM
-            print("-> 触发降级逻辑，交由 VLM 处理")
-            res = _execute_single_task(task, max_attempts, gui_client_url, show_img, use_ocr=True)
-            final_results.append(res)
-            if res.get("status") == "failed":
-                print(f"子任务执行失败，终止后续任务。原因: {res.get('reason')}")
-                break
-                
-        elif isinstance(task, dict):
-            # 明确的四元组指令
-            location = task.get("location")
-            predicate = task.get("predicate")
-            obj = task.get("object")
-            target_type = task.get("target_type", "text")
+        final_results = []
+        
+        # 2. 遍历执行子任务
+        for i, task in enumerate(tasks):
+            print(f"\n[{i+1}/{len(tasks)}] 处理子任务: {task}")
             
-            if target_type == "icon":
-                print(f"-> 目标 '{location}' 被判定为图标/语义概念，跳过 OCR，直接交由 VLM 处理")
-                fallback_intent = f"{predicate}{obj}"
-                res = _execute_single_task(fallback_intent, max_attempts, gui_client_url, show_img, use_ocr=False)
+            if isinstance(task, str):
+                # 降级逻辑：无法拆解的指令，直接交给 VLM
+                print("-> 触发降级逻辑，交由 VLM 处理")
+                res = _execute_single_task(task, max_attempts, gui_client_url, show_img, use_ocr=True, session_id=session_id)
                 final_results.append(res)
                 if res.get("status") == "failed":
                     print(f"子任务执行失败，终止后续任务。原因: {res.get('reason')}")
                     break
-                continue
-                
-            print(f"-> 尝试直接 OCR 定位: {location}")
-            
-            # 获取当前截图
-            try:
-                initial_res = requests.post(gui_client_url, json={"action": "screenshot", "coords": [0, 0]}).json()
-                current_screenshot = initial_res.get("screenshot")
-            except Exception as e:
-                print(f"请求截图失败: {e}")
-                final_results.append({"status": "failed", "reason": f"请求截图失败: {e}"})
-                break
-                
-            # 尝试 OCR 定位
-            coords_result = qwen_detector.get_target_coords(current_screenshot, location)
-            
-            if coords_result:
-                # OCR 找到了，直接执行动作
-                coords = [coords_result["x"], coords_result["y"]]
-                action = _map_predicate_to_action(predicate)
-                print(f"-> OCR 定位成功，物理坐标: {coords}，映射动作: {action}")
-                
-                req_data = {
-                    "action": action,
-                    "coords": coords,
-                    "text": obj if action == "type" else "",
-                    "key": ""
-                }
-                
-                response = requests.post(gui_client_url, json=req_data).json()
-                print(f"-> 动作执行完成")
-                time.sleep(2)
-                
-                # --- 新增：验证直接执行的结果 ---
-                print("正在验证直接执行是否成功...")
-                try:
-                    verify_res = requests.post(gui_client_url, json={"action": "screenshot", "coords": [0, 0]}).json()
-                    verify_screenshot = verify_res.get("screenshot")
                     
-                    verify_intent = f"{predicate}{obj}"
-                    verification = verify_task_success(verify_screenshot, verify_intent)
-                    is_success = verification.get("is_success", False)
-                    reason = verification.get("reason", "未知原因")
-                    
-                    print(f"验证结果: {'成功' if is_success else '失败'} - {reason}")
-                    
-                    if is_success:
-                        res_dict = {
-                            "status": "success",
-                            "reason": f"直接执行 {predicate} {obj} 成功: {reason}",
-                            "coords": coords,
-                            "attempts": 1
-                        }
-                        if show_img:
-                            res_dict["img"] = verify_screenshot
-                        final_results.append(res_dict)
-                    else:
-                        print(f"-> 直接执行后验证失败，降级交由 VLM 处理")
-                        fallback_intent = f"{predicate}{obj}"
-                        res = _execute_single_task(fallback_intent, max_attempts, gui_client_url, show_img, use_ocr=True)
-                        final_results.append(res)
-                        if res.get("status") == "failed":
-                            print(f"子任务执行失败，终止后续任务。原因: {res.get('reason')}")
-                            break
-                except Exception as e:
-                    print(f"验证过程发生异常: {e}，降级交由 VLM 处理")
+            elif isinstance(task, dict):
+                # 明确的四元组指令
+                location = task.get("location")
+                predicate = task.get("predicate")
+                obj = task.get("object")
+                target_type = task.get("target_type", "text")
+                
+                if target_type == "icon":
+                    print(f"-> 目标 '{location}' 被判定为图标/语义概念，跳过 OCR，直接交由 VLM 处理")
                     fallback_intent = f"{predicate}{obj}"
-                    res = _execute_single_task(fallback_intent, max_attempts, gui_client_url, show_img, use_ocr=True)
+                    res = _execute_single_task(fallback_intent, max_attempts, gui_client_url, show_img, use_ocr=False, session_id=session_id)
                     final_results.append(res)
                     if res.get("status") == "failed":
                         print(f"子任务执行失败，终止后续任务。原因: {res.get('reason')}")
                         break
-            else:
-                # OCR 没找到，说明缺失中间环节，降级给 VLM
-                print(f"-> OCR 未找到目标 '{location}'，可能缺失中间环节，降级交由 VLM 处理")
-                fallback_intent = f"{predicate}{obj}" # 组合成自然语言，如 "打开D盘"
-                res = _execute_single_task(fallback_intent, max_attempts, gui_client_url, show_img, use_ocr=True)
-                final_results.append(res)
-                if res.get("status") == "failed":
-                    print(f"子任务执行失败，终止后续任务。原因: {res.get('reason')}")
+                    continue
+                    
+                print(f"-> 尝试直接 OCR 定位: {location}")
+                
+                # 获取当前截图
+                try:
+                    initial_res = requests.post(gui_client_url, json={"action": "screenshot", "coords": [0, 0], "session_id": session_id})
+                    if initial_res.status_code == 429:
+                        print("服务端返回 429: 当前有其他任务正在执行")
+                        final_results.append({"status": "failed", "reason": "当前有其他任务正在执行，请稍后再试"})
+                        break
+                    initial_res = initial_res.json()
+                    current_screenshot = initial_res.get("screenshot")
+                except Exception as e:
+                    print(f"请求截图失败: {e}")
+                    final_results.append({"status": "failed", "reason": f"请求截图失败: {e}"})
                     break
                     
-    print("\n========== 总任务执行完毕 ==========")
-    # 返回最后一个任务的结果，或者汇总结果
-    if final_results:
-        return final_results[-1]
-    return {"status": "failed", "reason": "没有执行任何任务"}
+                # 尝试 OCR 定位
+                coords_result = qwen_detector.get_target_coords(current_screenshot, location)
+                
+                if coords_result:
+                    # OCR 找到了，直接执行动作
+                    coords = [coords_result["x"], coords_result["y"]]
+                    action = _map_predicate_to_action(predicate)
+                    print(f"-> OCR 定位成功，物理坐标: {coords}，映射动作: {action}")
+                    
+                    req_data = {
+                        "action": action,
+                        "coords": coords,
+                        "text": obj if action == "type" else "",
+                        "key": "",
+                        "session_id": session_id
+                    }
+                    
+                    response = requests.post(gui_client_url, json=req_data).json()
+                    print(f"-> 动作执行完成")
+                    time.sleep(2)
+                    
+                    # --- 新增：验证直接执行的结果 ---
+                    print("正在验证直接执行是否成功...")
+                    try:
+                        verify_res = requests.post(gui_client_url, json={"action": "screenshot", "coords": [0, 0], "session_id": session_id}).json()
+                        verify_screenshot = verify_res.get("screenshot")
+                        
+                        verify_intent = f"{predicate}{obj}"
+                        verification = verify_task_success(verify_screenshot, verify_intent)
+                        is_success = verification.get("is_success", False)
+                        reason = verification.get("reason", "未知原因")
+                        
+                        print(f"验证结果: {'成功' if is_success else '失败'} - {reason}")
+                        
+                        if is_success:
+                            res_dict = {
+                                "status": "success",
+                                "reason": f"直接执行 {predicate} {obj} 成功: {reason}",
+                                "coords": coords,
+                                "attempts": 1
+                            }
+                            if show_img:
+                                res_dict["img"] = verify_screenshot
+                            final_results.append(res_dict)
+                        else:
+                            print(f"-> 直接执行后验证失败，降级交由 VLM 处理")
+                            fallback_intent = f"{predicate}{obj}"
+                            res = _execute_single_task(fallback_intent, max_attempts, gui_client_url, show_img, use_ocr=True, session_id=session_id)
+                            final_results.append(res)
+                            if res.get("status") == "failed":
+                                print(f"子任务执行失败，终止后续任务。原因: {res.get('reason')}")
+                                break
+                    except Exception as e:
+                        print(f"验证过程发生异常: {e}，降级交由 VLM 处理")
+                        fallback_intent = f"{predicate}{obj}"
+                        res = _execute_single_task(fallback_intent, max_attempts, gui_client_url, show_img, use_ocr=True, session_id=session_id)
+                        final_results.append(res)
+                        if res.get("status") == "failed":
+                            print(f"子任务执行失败，终止后续任务。原因: {res.get('reason')}")
+                            break
+                else:
+                    # OCR 没找到，说明缺失中间环节，降级给 VLM
+                    print(f"-> OCR 未找到目标 '{location}'，可能缺失中间环节，降级交由 VLM 处理")
+                    fallback_intent = f"{predicate}{obj}" # 组合成自然语言，如 "打开D盘"
+                    res = _execute_single_task(fallback_intent, max_attempts, gui_client_url, show_img, use_ocr=True, session_id=session_id)
+                    final_results.append(res)
+                    if res.get("status") == "failed":
+                        print(f"子任务执行失败，终止后续任务。原因: {res.get('reason')}")
+                        break
+                        
+        print("\n========== 总任务执行完毕 ==========")
+        # 返回最后一个任务的结果，或者汇总结果
+        if final_results:
+            return final_results[-1]
+        return {"status": "failed", "reason": "没有执行任何任务"}
+        
+    finally:
+        # 无论任务成功、失败还是异常，都主动释放服务端的锁
+        print(f"正在释放任务 Session 锁: {session_id}")
+        try:
+            requests.post(gui_client_url, json={
+                "action": "release_lock",
+                "coords": [0, 0],
+                "session_id": session_id
+            }, timeout=3)
+        except Exception as e:
+            print(f"释放锁失败 (可能服务端已关闭): {e}")
 
 if __name__ == "__main__":
     # 保持你的 API Key 不变

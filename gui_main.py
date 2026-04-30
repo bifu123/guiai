@@ -37,12 +37,19 @@ pyautogui.PAUSE = 0.5
 
 app = FastAPI(title="Guiai 桌面执行器职责端")
 
+# 全局 Session 锁，保障单任务独占执行，支持长任务和超时自动释放
+current_session_id = None
+last_active_time = 0
+SESSION_TIMEOUT = 120 # 闲置超时时间（秒）
+session_lock = threading.Lock() # 用于保护 session 变量的并发修改
+
 # 定义数据结构业务
 class ActionRequest(BaseModel):
-    action: str            # 动作类型: click, double_click, type, scroll, key_press, hotkey, screenshot
+    action: str            # 动作类型: click, double_click, type, scroll, key_press, hotkey, screenshot, release_lock
     coords: List[int]      # 物理像素坐标: [x, y]
     text: Optional[str] = "" # 输入的内容
     key: Optional[str] = ""  # 特殊按键 (Enter, Tab 等)
+    session_id: str = ""   # 任务会话 ID，用于独占控制
 
 def capture_screen_base64():
     """捕获当前全屏并转为高质量 Base64 的业务"""
@@ -55,13 +62,41 @@ def capture_screen_base64():
     return img_str
 
 @app.post("/execute")
-async def execute_action(req: ActionRequest):
+def execute_action(req: ActionRequest):
     """
     接收指令并执行具体操作系统操作的职责
     """
+    global current_session_id, last_active_time
+    
+    # --- Session 锁逻辑 ---
+    with session_lock:
+        now = time.time()
+        # 如果当前没有 session，或者 session 已经闲置超时
+        if current_session_id is None or (now - last_active_time) > SESSION_TIMEOUT:
+            if req.action == "release_lock":
+                return {"status": "success", "message": "Lock already free"}
+            # 接受新任务
+            current_session_id = req.session_id
+            last_active_time = now
+            print(f"[{now}] 接受新任务 Session: {current_session_id}")
+        else:
+            # 当前有任务正在执行
+            if req.session_id != current_session_id:
+                print(f"[{now}] 拒绝请求：当前有任务正在执行 (Session: {current_session_id})")
+                raise HTTPException(status_code=429, detail="当前有任务正在执行，请稍后再试")
+            else:
+                # 是同一个任务，刷新活跃时间
+                last_active_time = now
+                
+        # 如果是主动释放锁的请求
+        if req.action == "release_lock":
+            print(f"[{now}] 任务主动释放锁 Session: {current_session_id}")
+            current_session_id = None
+            return {"status": "success", "message": "Lock released"}
+
     try:
         x, y = req.coords
-        print(f"执行业务: {req.action} | 坐标: {req.coords} | 内容: {req.text or req.key}")
+        print(f"执行业务: {req.action} | 坐标: {req.coords} | 内容: {req.text or req.key} | Session: {req.session_id}")
 
         # --- 分发动作职责 ---
         if req.action == "screenshot":
