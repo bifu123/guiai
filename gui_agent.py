@@ -35,29 +35,55 @@ def parse_json_response(response_text):
 # 请求操作指导
 def ask_vlm_for_action(screenshot_base64, user_intent):
     """
-    请求操作指导，只负责理解意图并输出目标名称和动作
+    请求操作指导，负责判断意图类型并提取目标名称和动作
     """
     prompt = f"""
 用户意图：{user_intent}
 
 【执行职责】：
-1. 理解用户的意图，提取出需要操作的目标名称（如“此电脑”、“回收站”、“浏览器”等）。
-2. 确定需要执行的动作
-- `click` - 单击（一般用于户点中获得焦点、单击按钮等）
-- `double_click` - 双击（一般用于打开程序图标、选中长文本）
-- `type` - 输入值
+1. 判断用户意图的类型：
+   - 如果用户想查看屏幕内容、询问当前状态、要求描述画面等（没有明确要操作某个图标/按钮），则 action_type 为 "query"
+   - 如果用户想打开程序、点击按钮、输入文字等（有明确的操作目标），则 action_type 为 "operate"
+
+2. 如果 action_type 为 "operate"，请进一步：
+   - 提取出需要操作的目标名称（如"此电脑"、"回收站"、"浏览器"等）
+   - 确定需要执行的动作：
+     - `click` - 单击（一般用于获得焦点、单击按钮等）
+     - `double_click` - 双击（一般用于打开程序图标、选中长文本）
+     - `type` - 输入值
 
 请以 JSON 格式返回：
 {{
-    "target": "目标名称",
-    "action": "动作类型",
-    "reason": "执行理由"
+    "action_type": "operate 或 query",
+    "target": "目标名称（operate 时必填，query 时留空）",
+    "action": "动作类型（operate 时必填，query 时留空）",
+    "reason": "判断理由"
 }}
 """
     
     response_text = glm_4_6v_flash(prompt, screenshot_base64)
     print(f"[DEBUG] 决策原始响应: {response_text}")
     return parse_json_response(response_text)
+
+# 描述屏幕内容（用于 query 类型意图）
+def describe_screen(screenshot_base64, user_intent):
+    """
+    使用视觉模型描述当前屏幕内容
+    """
+    prompt = f"""
+用户想知道：{user_intent}
+
+请仔细观察当前屏幕截图，用中文详细描述：
+1. 当前屏幕上能看到什么内容？
+2. 有哪些窗口或程序是打开的？
+3. 桌面上有哪些图标？
+4. 根据用户的问题，给出有针对性的回答。
+
+请用自然语言描述，不要输出 JSON。
+"""
+    response_text = glm_4_6v_flash(prompt, screenshot_base64)
+    print(f"[DEBUG] 描述屏幕原始响应: {response_text}")
+    return response_text
 
 # 验证结果
 def verify_task_success(screenshot_base64, user_intent):
@@ -117,6 +143,25 @@ def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://19
         # print(f'[GUI] - step 2 - 决策：理解意图并提取目标:\n {json.dumps(decision,ensure_ascii=False,indent=4)}')
         print(f"Agent 决策理由: {decision.get('reason')}")
         
+        action_type = decision.get("action_type", "operate")
+        
+        # --- 如果是 query 类型（查询/描述屏幕），直接返回描述结果 ---
+        if action_type == "query":
+            print("检测到查询型意图，正在描述屏幕内容...")
+            description = describe_screen(current_screenshot, intent)
+            result = {
+                "status": "success",
+                "action_type": "query",
+                "description": description,
+                "reason": decision.get("reason", "用户想查看屏幕内容"),
+                "coords": [0, 0],
+                "attempts": 1
+            }
+            if show_img:
+                result["img"] = current_screenshot
+            return result
+        
+        # --- 如果是 operate 类型（操作型意图），走原有流程 ---
         target_name = decision.get("target")
         action = decision.get("action", "click")
         

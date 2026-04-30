@@ -230,6 +230,17 @@ def run_for_agent(intent:str, max_attempts:int=5, gui_client_url:str="http://192
     '''
     response = run_agent_task(intent, max_attempts, gui_client_url, show_img)
     result = ""
+    
+    # 处理 query 类型（查询/描述屏幕）
+    if response.get("action_type") == "query":
+        result += f'''屏幕描述：
+{response.get("description", "无法描述屏幕内容")}'''
+        if show_img and response.get("img"):
+            result += f'''
+截图(base64前50字符): {response["img"][:50]}...'''
+        return result
+    
+    # 处理 operate 类型（操作型）
     if response.get("status") == "success":
         result += f'''操作成功：
 结果：{response.get("reason")}
