@@ -212,30 +212,49 @@ import json
 def execute_manual_flow(
     flow_data: Union[List[Dict[str, Any]], str], 
     endpoint: str = "http://192.168.2.16:8000/execute",
-    time_sleep: float = 3.0
+    time_sleep: float = 3.0,
+    params: dict = None
 ) -> Dict[str, Any]:
     """
-    顺次执行手动定义的流程自动化列表。
+    顺次执行手动定义的流程自动化列表。支持从 JSON 文件读取或直接传入列表，并支持动态参数注入。
     
     Args:
-        flow_data (Union[List[Dict], str]): 包含操作步骤的列表，或者 JSON 文件的路径。
-            列表元素格式如：
-            {
-                "auto": {
-                    "action": "double_click",
-                    "coords": [39, 945],
-                    "text": "",
-                    "key": ""
-                },
-                "description": "打开浏览器"
-            }
-        endpoint (str): GUI 执行器的 URL 地址。
-        time_sleep (float): 每一步执行后的等待时间（秒），默认 3.0 秒。
+        flow_data (Union[List[Dict], str]): 包含操作步骤的列表，或者 JSON 文件的绝对/相对路径。
+            列表元素格式示例：
+            [
+                {
+                    "auto": {
+                        "action": "double_click",  # 动作类型: click, double_click, type, scroll, drag
+                        "coords": [39, 945],       # 目标坐标 [x, y]
+                        "text": "${username}",     # 文本内容，支持 ${var} 格式的动态参数占位符
+                        "key": ""                  # 特殊按键（暂留）
+                    },
+                    "description": "输入用户名"      # 步骤描述，用于日志打印
+                }
+            ]
+        endpoint (str): GUI 执行器的 URL 地址，默认为 "http://192.168.2.16:8000/execute"。
+        time_sleep (float): 每一步执行后的等待时间（秒），用于给程序加载或窗口打开留出时间，默认 3.0 秒。
+        params (dict, optional): 动态参数字典。如果 flow_data 的 text 字段中包含类似 `${username}` 的占位符，
+            且 params 中存在对应的键（如 `{"username": "root"}`），则会自动将其替换为真实值。默认为 None。
         
-    Returns:
-        Dict: 包含最终执行状态、最后一步的截图 base64 等信息。
+        Returns:
+        Dict: 包含最终执行状态的字典。
+            成功示例: {"status": "success", "message": "所有步骤执行完毕", "total_steps": 5, "screenshot": "base64..."}
+            失败示例: {"status": "failed", "error_step": 2, "description": "点击登录", "reason": "...", "screenshot": "base64..."}
+            
+    Examples:
+        # 示例 1: 直接传入 JSON 文件路径
+        result = execute_manual_flow(flow_data="record_flow.json")
+        
+        # 示例 2: 传入动态参数
+        user_data = {"username": "admin", "password": "123"}
+        result = execute_manual_flow(flow_data="login_flow.json", params=user_data)
+        
+        # 示例 3: 调整等待时间
+        result = execute_manual_flow(flow_data="slow_loading_flow.json", time_sleep=5.0)
     """
     import time
+    import re
     
     # 1. 参数校验与解析
     flow_list = []
@@ -272,11 +291,20 @@ def execute_manual_flow(
         
         print(f"[{i+1}/{len(flow_list)}] 正在执行: {description}")
         
+        # 解析动态参数
+        text_val = auto_data.get("text", "")
+        if text_val and params:
+            # 查找所有 ${var} 格式的占位符
+            matches = re.findall(r'\$\{([^}]+)\}', text_val)
+            for var_name in matches:
+                if var_name in params:
+                    text_val = text_val.replace(f"${{{var_name}}}", str(params[var_name]))
+        
         # 构造请求 payload
         payload = {
             "action": auto_data.get("action", "click"),
             "coords": auto_data.get("coords", [0, 0]),
-            "text": auto_data.get("text", ""),
+            "text": text_val,
             "key": auto_data.get("key", ""),
             "session_id": "manual_flow_session" # 使用固定 session_id 保持连贯性
         }
@@ -424,8 +452,14 @@ if __name__ == "__main__":
             ]
             result = execute_manual_flow(test_flow)
         elif sub_choice == "B":
-            print("正在读取 record_flow.json...")
-            result = execute_manual_flow(rf'{json_file}')
+            print("正在读取 JSON 文件...")
+            # 演示如何传入动态参数
+            demo_params = {
+                "username": "root",
+                "password": "shift962512"
+            }
+            print(f"使用的动态参数: {demo_params}")
+            result = execute_manual_flow(rf'{json_file}', params=demo_params)
         else:
             print("无效的选项。")
             exit()
