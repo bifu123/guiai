@@ -369,9 +369,12 @@ def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://19
                     }, timeout=5).json()
                     
                     if uia_res.get("status") == "success":
-                        coords_result = {"x": uia_res["coords"][0], "y": uia_res["coords"][1]}
-                        print(f"-> UIAutomation 定位成功，物理坐标: {coords_result}")
-                        current_screenshot = uia_res.get("screenshot")
+                        if "coords" in uia_res:
+                            coords_result = {"x": uia_res["coords"][0], "y": uia_res["coords"][1]}
+                            print(f"-> UIAutomation 定位成功，物理坐标: {coords_result}")
+                            current_screenshot = uia_res.get("screenshot")
+                        else:
+                            print(f"-> UIAutomation 请求成功但未返回坐标，请检查服务端 gui_main.py 是否为最新版本！")
                     else:
                         print(f"-> UIAutomation 未找到目标 '{location}'")
                 except Exception as e:

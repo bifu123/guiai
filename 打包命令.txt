@@ -1,1 +1,2 @@
-pyinstaller --onefile --noconsole gui_main.py
+pyinstaller --onefile --noconsole gui_clint.py
+pyinstaller --onefile --noconsole gui_recorder.py
