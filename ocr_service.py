@@ -6,6 +6,9 @@ import requests
 import re
 from io import BytesIO
 from PIL import Image
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class QwenDetector:
     """职责：利用 Qwen-VL-OCR 模型将视觉文字转化为物理像素坐标"""
@@ -16,13 +19,16 @@ class QwenDetector:
         self.model = "qwen-vl-ocr-latest"
         self.base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
 
-    def get_target_coords(self, image_source, target_name, max_retries=3):
+    def get_target_coords(self, image_source, target_name, max_retries=None):
         """
         核心业务：定位目标并换算坐标
         :param image_source: 可以是本地路径，也可以是 Base64 字符串
         :param target_name: 想要寻找的文字或图标描述
-        :param max_retries: 解析失败时最多重试次数（含首次）
+        :param max_retries: 解析失败时最多重试次数（含首次），默认从环境变量 OCR_RETRY 读取
         """
+        if max_retries is None:
+            max_retries = int(os.getenv("OCR_RETRY", 3))
+            
         # 1. 统一处理图片源并获取原始尺寸（关键职责：防止偏移）
         if not image_source:
             print("错误：传入的 image_source 为空")
@@ -45,19 +51,22 @@ class QwenDetector:
             img_base64 = image_source.replace('data:image/png;base64,', '')
 
         # 2. 构建初始 Prompt
-        base_prompt = f"""任务：在图片中定位文字“{target_name}”的中心位置。
+        base_prompt = f"""任务：在图片中寻找文字或图标“{target_name}”。
 
 【输出格式要求（必须严格遵守）】：
 1. 只输出一个 JSON 对象，不要包含任何其他文字、解释或 markdown 标记。
-2. JSON 格式必须严格如下，其中 norm_x 和 norm_y 必须是 0-1000 之间的整数：
+2. 如果在图片中找到了目标，请输出其中心位置的归一化坐标（0-1000之间的整数）：
 {{"norm_x": 整数, "norm_y": 整数}}
+3. 如果在图片中**没有找到**目标，请输出：
+{{"norm_x": -1, "norm_y": -1}}
 
 【示例】：
 如果目标在图片正中央，输出：{{"norm_x": 500, "norm_y": 500}}
+如果图片中没有该目标，输出：{{"norm_x": -1, "norm_y": -1}}
 
 【警告】：
-- 不要输出文本框的四个角坐标！
-- 不要输出多个坐标！
+- 绝对不要输出文本框的四个角坐标！
+- 绝对不要输出多个数字（如 488, 418, 15, 57, 90 是错误的）！
 - 只输出一个中心点坐标！
 - 不要使用引号包裹数字！"""
 
@@ -100,14 +109,16 @@ class QwenDetector:
                 content = res_json["choices"][0]["message"]["content"]
                 
                 # 4. 解析模型返回的坐标
-                norm_x_match = re.search(r'"?norm_x"?\s*:\s*(\d+(?:\.\d+)?)', content)
-                norm_y_match = re.search(r'"?norm_y"?\s*:\s*(\d+(?:\.\d+)?)', content)
+                # 增强正则：处理模型可能返回的非法 JSON，如 {"norm_x": 488, 418, 15, 57, 90}
+                # 我们只提取第一个数字
+                norm_x_match = re.search(r'"?norm_x"?\s*:\s*(-?\d+(?:\.\d+)?)', content)
+                norm_y_match = re.search(r'"?norm_y"?\s*:\s*(-?\d+(?:\.\d+)?)', content)
                 
                 if norm_x_match and norm_y_match:
                     norm_x = float(norm_x_match.group(1))
                     norm_y = float(norm_y_match.group(1))
                 else:
-                    # Fallback: 尝试标准的 JSON 解析
+                    # Fallback 1: 尝试标准的 JSON 解析
                     clean_content = content.strip()
                     if "```json" in clean_content:
                         clean_content = clean_content.split("```json")[1].split("```")[0].strip()
@@ -126,9 +137,22 @@ class QwenDetector:
                         norm_x = float(norm_data.get("norm_x"))
                         norm_y = float(norm_data.get("norm_y"))
                     except Exception as e:
-                        last_error = f"JSON 解析失败: {e}"
-                        print(f"{last_error}, 原始字符串: {content[:100]}...")
-                        continue
+                        # Fallback 2: 暴力提取数字
+                        # 如果 JSON 解析失败（比如包含了多余的逗号和数字），尝试直接提取前两个数字
+                        nums = re.findall(r'-?\d+(?:\.\d+)?', match.group())
+                        if len(nums) >= 2:
+                            norm_x = float(nums[0])
+                            norm_y = float(nums[1])
+                            print(f"警告: JSON 解析失败，但通过正则暴力提取到坐标: norm_x={norm_x}, norm_y={norm_y}")
+                        else:
+                            last_error = f"JSON 解析失败且无法提取数字: {e}"
+                            print(f"{last_error}, 原始字符串: {content[:100]}...")
+                            continue
+
+                # 检查是否未找到目标
+                if norm_x == -1 and norm_y == -1:
+                    print(f"模型报告：在图片中未找到目标 '{target_name}'")
+                    return None
 
                 # 校验：如果坐标值包含逗号（说明模型返回了文本框坐标序列），则报错
                 if ',' in str(norm_x) or ',' in str(norm_y):

@@ -15,6 +15,9 @@ def _call_executor(payload: Dict[str, Any], endpoint: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+#----------------------------
+#  原始工具
+#----------------------------
 # 在屏幕指定坐标执行鼠标左键单击。用于点击按钮、切换窗口或聚焦输入框。
 def mouse_click(
     x: int, 
@@ -198,8 +201,11 @@ def scroll_screen(
 #     }
 #     return _call_executor(payload, endpoint)
 
-# 用于agent的工具
-def run_for_agent(intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.2.16:8000/execute", show_img:bool=False):
+
+#----------------------------
+#  agent工具
+#----------------------------
+def run_for_agent(intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.2.16:8000/execute", show_img:bool=False, history:list=None):
     """
     执行 GUI Agent 任务，根据自然语言意图自动操作桌面。
 
@@ -208,27 +214,15 @@ def run_for_agent(intent:str, max_attempts:int=5, gui_client_url:str="http://192
         max_attempts (int, optional): 最大尝试次数。默认为 5。
         gui_client_url (str, optional): GUI 执行器的 URL 地址。默认为 "http://192.168.2.16:8000/execute"。
         show_img (bool, optional): 是否在成功时返回截图 base64。默认为 False。
+        history (list, optional): 聊天对话历史，用于上下文推断。默认为 None。
 
     Returns:
         str: 包含操作结果、坐标和尝试次数的格式化字符串。
     """
     
     from gui_agent import run_agent_task
-    '''
-        if is_success:
-            return {
-                "status": "success", 
-                "reason": reason,
-                "coords": req_data['coords'], 
-                "attempts": attempt + 1
-            }
-            
-    return {
-        "status": "failed", 
-        "reason": "Max attempts reached"
-    }
-    '''
-    response = run_agent_task(intent, max_attempts, gui_client_url, show_img)
+    
+    response = run_agent_task(intent, max_attempts, gui_client_url, show_img, history)
     result = ""
     
     # 处理 query 类型（查询/描述屏幕）

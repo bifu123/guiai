@@ -6,6 +6,7 @@ import json
 from gui_vl import glm_4_6v_flash
 from ocr_service import QwenDetector
 from ocr_openrouter import OpenRouterDetector
+from gui_parser import parse_intent
 
 gui_client_url = "http://192.168.2.16:8000/execute"
 qwen_detector = QwenDetector()
@@ -48,8 +49,8 @@ def ask_vlm_for_action(screenshot_base64, user_intent):
 2. 如果 action_type 为 "operate"，请进一步：
    - 提取出需要操作的目标名称（如"此电脑"、"回收站"、"浏览器"等）
    - 确定需要执行的动作：
-     - `click` - 单击（一般用于获得焦点、单击按钮等）
-     - `double_click` - 双击（一般用于打开程序图标、选中长文本）
+     - `click` - 单击（一般用于获得焦点、单击网页链接、单击普通按钮等）
+     - `double_click` - 双击（【重要】在桌面上打开应用、运行程序、打开文件夹/磁盘等，必须使用双击！）
      - `type` - 输入值
 
 请以 JSON 格式返回：
@@ -114,13 +115,26 @@ def verify_task_success(screenshot_base64, user_intent):
     print(f"[DEBUG] 验证原始响应: {response_text}")
     return parse_json_response(response_text)
 
-def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.2.16:8000/execute", show_img:bool=False):
-    print(f"开始执行任务职责: {intent}")
-    
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+def _execute_single_task(task_intent: str, max_attempts: int, gui_client_url: str, show_img: bool):
+    """执行单个子任务（降级到 VLM 逻辑）"""
+    print(f"\n>>> 开始执行子任务: {task_intent}")
     reason = "操作失败"
     
+    # 优先使用传入的 max_attempts，如果未传入或为默认值，则尝试从环境变量读取
+    env_retry = os.getenv("DO_RETRY")
+    if env_retry and max_attempts == 5: # 5 是默认值
+        try:
+            max_attempts = int(env_retry)
+        except ValueError:
+            pass
+            
     for attempt in range(max_attempts):
-        print(f"\n--- 第 {attempt + 1}/{max_attempts} 次尝试 ---")
+        print(f"--- 第 {attempt + 1}/{max_attempts} 次尝试 ---")
         
         # --- 1. 初始截图 ---
         try:
@@ -136,11 +150,9 @@ def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://19
         if not current_screenshot:
             print(f"获取截图失败，服务端返回: {initial_res}")
             return {"status": "failed", "reason": f"获取截图失败: {initial_res.get('detail', '未知错误')}"}
-        # print(f'[GUI] - step 1 - 初始截图:\n {current_screenshot[50]}...')
         
         # --- 2. 决策：理解意图并提取目标 ---
-        decision = ask_vlm_for_action(current_screenshot, intent)
-        # print(f'[GUI] - step 2 - 决策：理解意图并提取目标:\n {json.dumps(decision,ensure_ascii=False,indent=4)}')
+        decision = ask_vlm_for_action(current_screenshot, task_intent)
         print(f"Agent 决策理由: {decision.get('reason')}")
         
         action_type = decision.get("action_type", "operate")
@@ -148,7 +160,7 @@ def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://19
         # --- 如果是 query 类型（查询/描述屏幕），直接返回描述结果 ---
         if action_type == "query":
             print("检测到查询型意图，正在描述屏幕内容...")
-            description = describe_screen(current_screenshot, intent)
+            description = describe_screen(current_screenshot, task_intent)
             result = {
                 "status": "success",
                 "action_type": "query",
@@ -172,7 +184,6 @@ def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://19
         # --- 3. 定位：使用 QwenDetector 获取物理坐标 ---
         print(f"正在使用 QwenDetector 定位目标: {target_name} ...")
         coords_result = qwen_detector.get_target_coords(current_screenshot, target_name)
-        # print(f'[GUI] - step 3 - 定位目标:\n {json.dumps(coords_result,ensure_ascii=False,indent=4)}')
         
         if not coords_result:
             print(f"定位目标 {target_name} 失败。")
@@ -190,7 +201,6 @@ def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://19
         }
         
         response = requests.post(gui_client_url, json=req_data).json()
-        # print(f'[GUI] - step 4 - 执行动作:\n {json.dumps(response,ensure_ascii=False,indent=4)}')
         print(f"动作执行完成，坐标: {req_data['coords']}")
         
         # 等待界面响应
@@ -204,8 +214,7 @@ def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://19
         }).json()
         verify_screenshot = verify_res.get("screenshot")
         
-        verification = verify_task_success(verify_screenshot, intent)
-        # print(f'[GUI] - step 5 - 验证任务是否成功:\n {json.dumps(verification,ensure_ascii=False,indent=4)}')
+        verification = verify_task_success(verify_screenshot, task_intent)
         is_success = verification.get("is_success", False)
         reason = verification.get("reason", "未知原因")
         
@@ -226,6 +235,100 @@ def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://19
         "status": "failed", 
         "reason": reason
     }
+
+def _map_predicate_to_action(predicate: str) -> str:
+    """将自然语言谓词映射为系统支持的动作"""
+    predicate = predicate.lower()
+    if "双击" in predicate or "打开" in predicate:
+        return "double_click"
+    elif "输入" in predicate:
+        return "type"
+    elif "按" in predicate:
+        return "click" # 键盘按键通常也需要先点击聚焦，或者后续扩展专门的 key 动作
+    else:
+        return "click" # 默认单击
+
+def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.2.16:8000/execute", show_img:bool=False, history:list=None):
+    print(f"========== 开始执行总任务: {intent} ==========")
+    
+    # 1. 语义切分
+    print("正在进行语义切分...")
+    tasks = parse_intent(intent, history)
+    print(f"切分结果: {tasks}")
+    
+    final_results = []
+    
+    # 2. 遍历执行子任务
+    for i, task in enumerate(tasks):
+        print(f"\n[{i+1}/{len(tasks)}] 处理子任务: {task}")
+        
+        if isinstance(task, str):
+            # 降级逻辑：无法拆解的指令，直接交给 VLM
+            print("-> 触发降级逻辑，交由 VLM 处理")
+            res = _execute_single_task(task, max_attempts, gui_client_url, show_img)
+            final_results.append(res)
+            if res.get("status") == "failed":
+                print(f"子任务执行失败，终止后续任务。原因: {res.get('reason')}")
+                break
+                
+        elif isinstance(task, dict):
+            # 明确的三元组指令
+            location = task.get("location")
+            predicate = task.get("predicate")
+            obj = task.get("object")
+            
+            print(f"-> 尝试直接 OCR 定位: {location}")
+            
+            # 获取当前截图
+            try:
+                initial_res = requests.post(gui_client_url, json={"action": "screenshot", "coords": [0, 0]}).json()
+                current_screenshot = initial_res.get("screenshot")
+            except Exception as e:
+                print(f"请求截图失败: {e}")
+                final_results.append({"status": "failed", "reason": f"请求截图失败: {e}"})
+                break
+                
+            # 尝试 OCR 定位
+            coords_result = qwen_detector.get_target_coords(current_screenshot, location)
+            
+            if coords_result:
+                # OCR 找到了，直接执行动作
+                coords = [coords_result["x"], coords_result["y"]]
+                action = _map_predicate_to_action(predicate)
+                print(f"-> OCR 定位成功，物理坐标: {coords}，映射动作: {action}")
+                
+                req_data = {
+                    "action": action,
+                    "coords": coords,
+                    "text": obj if action == "type" else "",
+                    "key": ""
+                }
+                
+                response = requests.post(gui_client_url, json=req_data).json()
+                print(f"-> 动作执行完成")
+                time.sleep(2)
+                
+                final_results.append({
+                    "status": "success",
+                    "reason": f"直接执行 {predicate} {obj} 成功",
+                    "coords": coords,
+                    "attempts": 1
+                })
+            else:
+                # OCR 没找到，说明缺失中间环节，降级给 VLM
+                print(f"-> OCR 未找到目标 '{location}'，可能缺失中间环节，降级交由 VLM 处理")
+                fallback_intent = f"{predicate}{obj}" # 组合成自然语言，如 "打开D盘"
+                res = _execute_single_task(fallback_intent, max_attempts, gui_client_url, show_img)
+                final_results.append(res)
+                if res.get("status") == "failed":
+                    print(f"子任务执行失败，终止后续任务。原因: {res.get('reason')}")
+                    break
+                    
+    print("\n========== 总任务执行完毕 ==========")
+    # 返回最后一个任务的结果，或者汇总结果
+    if final_results:
+        return final_results[-1]
+    return {"status": "failed", "reason": "没有执行任何任务"}
 
 if __name__ == "__main__":
     # 保持你的 API Key 不变
