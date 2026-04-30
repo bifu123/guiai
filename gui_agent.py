@@ -497,5 +497,6 @@ def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://19
 
 if __name__ == "__main__":
     # 保持你的 API Key 不变
-    response = run_agent_task(r"打开桌面上的`此电脑`")
+    intent = input("请输出你的指令：")
+    response = run_agent_task(rf'{intent}')
     print(json.dumps(response,ensure_ascii=False,indent=4))
