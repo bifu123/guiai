@@ -498,5 +498,6 @@ def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://19
 if __name__ == "__main__":
     # 保持你的 API Key 不变
     intent = input("请输出你的指令：")
-    response = run_agent_task(rf'{intent}')
+    gui_client_url = input("请输入目标接口 (默认 http://192.168.68.15:8000/execute): ") or "http://192.168.68.15:8000/execute"
+    response = run_agent_task(intent=rf'{intent}', gui_client_url=gui_client_url)
     print(json.dumps(response,ensure_ascii=False,indent=4))
