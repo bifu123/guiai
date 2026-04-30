@@ -8,6 +8,7 @@ from ocr_service import QwenDetector
 from ocr_openrouter import OpenRouterDetector
 from gui_parser import parse_intent
 from gui_redis import redis_manager
+from gui_skills import skill_manager
 
 gui_client_url = "http://192.168.2.16:8000/execute"
 qwen_detector = QwenDetector()
@@ -34,18 +35,22 @@ def parse_json_response(response_text):
             return json.loads(match.group())
         raise
 
-def build_react_prompt(total_intent, history, current_ui_description=""):
+def build_react_prompt(total_intent, history, current_ui_description="", skill_context=""):
     history_str = ""
     if history:
         history_str = json.dumps(history[-3:], ensure_ascii=False, indent=2)
     else:
         history_str = "无"
 
+    skill_section = ""
+    if skill_context:
+        skill_section = f"\n【专属技能指导】:\n{skill_context}\n"
+
     prompt = f"""
 你是一个能够操作电脑 GUI 的智能助手。你需要通过观察屏幕截图，思考当前状态，并决定下一步动作。
 
 【总目标】: {total_intent}
-
+{skill_section}
 【历史轨迹 (最近3步)】:
 {history_str}
 
@@ -59,10 +64,11 @@ def build_react_prompt(total_intent, history, current_ui_description=""):
 【动作类型 (action)】:
 - `click` - 单击（一般用于获得焦点、单击网页链接、单击普通按钮等）
 - `double_click` - 双击（【重要】在桌面上打开应用、运行程序、打开文件夹/磁盘等，必须使用双击！）
-- `type` - 输入文字（此时必须在 text 字段提供要输入的文字）
+- `type` - 追加输入文字（在当前光标位置追加输入。必须在 text 字段提供要输入的文字）
+- `clear_and_type` - 清空并输入文字（【推荐】用于地址栏、搜索框等需要覆盖原有内容的场景。会自动全选清空再输入。必须在 text 字段提供要输入的文字）
 - `scroll` - 滚动页面（此时必须在 text 字段提供 "down" 或 "up"）
-- `key_press` - 按下单个按键（此时必须在 key 字段提供按键名，如 "enter", "esc", "backspace"）
-- `hotkey` - 组合快捷键（此时必须在 text 字段提供组合键，如 "ctrl+c", "alt+f4"）
+- `key_press` - 按下单个按键（如 "enter" 回车确认, "backspace" 退格删除, "delete" 删除, "esc" 等，必须在 key 字段提供按键名）
+- `hotkey` - 组合快捷键（此时必须在 text 字段提供组合键，如 "ctrl+a" 全选, "ctrl+c" 复制, "ctrl+v" 粘贴）
 - `window_control` - 窗口控制（此时必须在 text 字段提供 "maximize", "minimize" 或 "close"）
 - `finish` - 任务完成（当总目标已经实现时使用）
 
@@ -142,6 +148,14 @@ load_dotenv()
 def run_react_loop(total_intent: str, max_attempts: int, gui_client_url: str, show_img: bool, session_id: str):
     print(f"\n>>> 开始执行 ReAct 循环任务: {total_intent}")
     
+    # 1. 技能路由：根据总目标选择合适的技能
+    print("正在分析任务意图，匹配专属技能...")
+    skill_context = skill_manager.select_skill(total_intent)
+    if skill_context:
+        print("已加载专属技能指导。")
+    else:
+        print("未匹配到特定技能，使用通用模式。")
+        
     redis_manager.set_task_status(session_id, "running")
     
     task_completed = False
@@ -178,7 +192,7 @@ def run_react_loop(total_intent: str, max_attempts: int, gui_client_url: str, sh
         history = redis_manager.get_history(session_id)
         
         # 2. 思考与动作 (Thought & Action)
-        prompt = build_react_prompt(total_intent, history)
+        prompt = build_react_prompt(total_intent, history, skill_context=skill_context)
         try:
             response_text = glm_4_6v_flash(prompt, current_screenshot)
             print(f"[DEBUG] ReAct 原始响应:\n{response_text}")
@@ -254,7 +268,22 @@ def run_react_loop(total_intent: str, max_attempts: int, gui_client_url: str, sh
         }
         
         try:
-            response = requests.post(gui_client_url, json=req_data).json()
+            if action_type == "clear_and_type":
+                print(f"执行 clear_and_type: 先点击并全选，然后输入 '{action.get('text', '')}'")
+                # 1. 点击获取焦点
+                requests.post(gui_client_url, json={"action": "click", "coords": coords or [0, 0], "session_id": session_id})
+                time.sleep(0.5)
+                # 2. 全选 (ctrl+a)
+                requests.post(gui_client_url, json={"action": "hotkey", "coords": coords or [0, 0], "text": "ctrl+a", "session_id": session_id})
+                time.sleep(0.5)
+                # 3. 退格删除 (backspace) 确保清空
+                requests.post(gui_client_url, json={"action": "key_press", "coords": coords or [0, 0], "key": "backspace", "session_id": session_id})
+                time.sleep(0.5)
+                # 4. 输入新内容
+                req_data["action"] = "type"
+                response = requests.post(gui_client_url, json=req_data).json()
+            else:
+                response = requests.post(gui_client_url, json=req_data).json()
             print(f"动作执行完成: {action_type} on {target_name or 'None'}")
         except Exception as e:
             print(f"执行动作失败: {e}")
