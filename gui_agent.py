@@ -261,10 +261,13 @@ def _execute_single_task(task_intent: str, max_attempts: int, gui_client_url: st
                 result["img"] = verify_screenshot
             return result
             
-    return {
+    res_dict = {
         "status": "failed", 
         "reason": reason
     }
+    if show_img and 'current_screenshot' in locals():
+        res_dict["img"] = current_screenshot
+    return res_dict
 
 def _map_predicate_to_action(predicate: str) -> str:
     """将自然语言谓词映射为系统支持的动作"""
@@ -363,12 +366,15 @@ def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://19
                     print(f"验证结果: {'成功' if is_success else '失败'} - {reason}")
                     
                     if is_success:
-                        final_results.append({
+                        res_dict = {
                             "status": "success",
                             "reason": f"直接执行 {predicate} {obj} 成功: {reason}",
                             "coords": coords,
                             "attempts": 1
-                        })
+                        }
+                        if show_img:
+                            res_dict["img"] = verify_screenshot
+                        final_results.append(res_dict)
                     else:
                         print(f"-> 直接执行后验证失败，降级交由 VLM 处理")
                         fallback_intent = f"{predicate}{obj}"

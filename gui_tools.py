@@ -223,7 +223,7 @@ def run_for_agent(intent:str, max_attempts:int=5, gui_client_url:str="http://192
     from gui_agent import run_agent_task
     
     response = run_agent_task(intent, max_attempts, gui_client_url, show_img, history)
-    result = ""
+    result = "GUI 操作结果\n\n"
     
     # 处理 query 类型（查询/描述屏幕）
     if response.get("action_type") == "query":
@@ -232,6 +232,8 @@ def run_for_agent(intent:str, max_attempts:int=5, gui_client_url:str="http://192
         if show_img and response.get("img"):
             result += f'''
 截图(base64前50字符): {response["img"][:50]}...'''
+            # 执行发送图片的逻辑
+            
         return result
     
     # 处理 operate 类型（操作型）
