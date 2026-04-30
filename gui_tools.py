@@ -199,7 +199,7 @@ def scroll_screen(
 #     return _call_executor(payload, endpoint)
 
 # 用于agent的工具
-def run_for_agent(intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.2.16:8000/execute"):
+def run_for_agent(intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.2.16:8000/execute", show_img:bool=False):
     """
     执行 GUI Agent 任务，根据自然语言意图自动操作桌面。
 
@@ -207,6 +207,7 @@ def run_for_agent(intent:str, max_attempts:int=5, gui_client_url:str="http://192
         intent (str): 用户的自然语言意图，例如 "在桌面上打开此电脑图标"。
         max_attempts (int, optional): 最大尝试次数。默认为 5。
         gui_client_url (str, optional): GUI 执行器的 URL 地址。默认为 "http://192.168.2.16:8000/execute"。
+        show_img (bool, optional): 是否在成功时返回截图 base64。默认为 False。
 
     Returns:
         str: 包含操作结果、坐标和尝试次数的格式化字符串。
@@ -227,13 +228,16 @@ def run_for_agent(intent:str, max_attempts:int=5, gui_client_url:str="http://192
         "reason": "Max attempts reached"
     }
     '''
-    response = run_agent_task(intent, max_attempts, gui_client_url)
+    response = run_agent_task(intent, max_attempts, gui_client_url, show_img)
     result = ""
     if response.get("status") == "success":
         result += f'''操作成功：
 结果：{response.get("reason")}
 坐标：{response.get("coords")}
 尝试次数：{response.get("attempts")}'''
+        if show_img and response.get("img"):
+            result += f'''
+截图(base64前50字符): {response["img"][:50]}...'''
 
     if response.get("status") == "failed":
         result += f'''操作失败：
@@ -263,4 +267,4 @@ if __name__ == "__main__":
     gui_client_url = "http://192.168.2.17:8000/execute"
     
     
-    print("*" * 50, f'\n{run_for_agent(intent=intent, max_attempts=max_attempts, gui_client_url=gui_client_url)}')
+    print("*" * 50, f'\n{run_for_agent(intent=intent, max_attempts=max_attempts, gui_client_url=gui_client_url, show_img=True)}')

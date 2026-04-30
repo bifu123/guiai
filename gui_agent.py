@@ -88,7 +88,7 @@ def verify_task_success(screenshot_base64, user_intent):
     print(f"[DEBUG] 验证原始响应: {response_text}")
     return parse_json_response(response_text)
 
-def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.2.16:8000/execute"):
+def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.2.16:8000/execute", show_img:bool=False):
     print(f"开始执行任务职责: {intent}")
     
     reason = "操作失败"
@@ -167,12 +167,15 @@ def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://19
         print(f"验证结果: {'成功' if is_success else '失败'} - {reason}")
         
         if is_success:
-            return {
+            result = {
                 "status": "success", 
                 "reason": reason,
                 "coords": req_data['coords'], 
                 "attempts": attempt + 1
             }
+            if show_img:
+                result["img"] = verify_screenshot
+            return result
             
     return {
         "status": "failed", 
