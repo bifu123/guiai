@@ -22,7 +22,7 @@ def _call_executor(payload: Dict[str, Any], endpoint: str) -> Dict[str, Any]:
 def mouse_click(
     x: int, 
     y: int, 
-    endpoint: str = "http://192.168.2.16:8000/execute"
+    endpoint: str = "http://192.168.68.16:8000/execute"
 ) -> Dict[str, Any]:
     """
     在屏幕指定坐标执行鼠标左键单击。用于点击按钮、切换窗口或聚焦输入框。
@@ -47,7 +47,7 @@ def mouse_click(
 def mouse_double_click(
     x: int, 
     y: int, 
-    endpoint: str = "http://192.168.2.16:8000/execute"
+    endpoint: str = "http://192.168.68.16:8000/execute"
 ) -> Dict[str, Any]:
     """
     在屏幕指定坐标执行鼠标左键双击。用于打开桌面图标或选中整行文本。
@@ -73,7 +73,7 @@ def type_text(
     x: int, 
     y: int, 
     text: str, 
-    endpoint: str = "http://192.168.2.16:8000/execute"
+    endpoint: str = "http://192.168.68.16:8000/execute"
 ) -> Dict[str, Any]:
     """
     在指定位置点击聚焦并输入文本字符串。用于填充表单、输入账号密码或 URL。
@@ -100,7 +100,7 @@ def press_key(
     x: int, 
     y: int, 
     key_name: str, 
-    endpoint: str = "http://192.168.2.16:8000/execute"
+    endpoint: str = "http://192.168.68.16:8000/execute"
 ) -> Dict[str, Any]:
     """
     在指定坐标聚焦并按下特殊功能按键（如 Enter, Tab, Esc 等）。
@@ -127,7 +127,7 @@ def use_hotkey(
     keys_combo: str, 
     x: int = 0, 
     y: int = 0, 
-    endpoint: str = "http://192.168.2.16:8000/execute"
+    endpoint: str = "http://192.168.68.16:8000/execute"
 ) -> Dict[str, Any]:
     """
     在指定坐标位置聚焦（若坐标非0）并触发组合快捷键（如 ctrl+v）。
@@ -153,7 +153,7 @@ def use_hotkey(
 def scroll_screen(
     x: int, 
     y: int, 
-    endpoint: str = "http://192.168.2.16:8000/execute"
+    endpoint: str = "http://192.168.68.16:8000/execute"
 ) -> Dict[str, Any]:
     """
     在指定坐标位置执行鼠标滚轮滚动（默认固定增量）。
@@ -178,7 +178,7 @@ def scroll_screen(
 
 # def control_window(
 #     mode: str = "maximize", 
-#     endpoint: str = "http://192.168.2.16:8000/execute"
+#     endpoint: str = "http://192.168.68.16:8000/execute"
 # ) -> Dict[str, Any]:
 #     """
 #     控制当前活动窗口的状态（最大化、最小化、关闭）。
@@ -211,7 +211,7 @@ import json
 
 def execute_manual_flow(
     flow_data: Union[List[Dict[str, Any]], str], 
-    endpoint: str = "http://192.168.2.16:8000/execute",
+    endpoint: str = "http://192.168.68.16:8000/execute",
     time_sleep: float = 3.0,
     params: dict = None
 ) -> Dict[str, Any]:
@@ -232,7 +232,7 @@ def execute_manual_flow(
                     "description": "输入用户名"      # 步骤描述，用于日志打印
                 }
             ]
-        endpoint (str): GUI 执行器的 URL 地址，默认为 "http://192.168.2.16:8000/execute"。
+        endpoint (str): GUI 执行器的 URL 地址，默认为 "http://192.168.68.16:8000/execute"。
         time_sleep (float): 每一步执行后的等待时间（秒），用于给程序加载或窗口打开留出时间，默认 3.0 秒。
         params (dict, optional): 动态参数字典。如果 flow_data 的 text 字段中包含类似 `${username}` 的占位符，
             且 params 中存在对应的键（如 `{"username": "root"}`），则会自动将其替换为真实值。默认为 None。
@@ -346,14 +346,15 @@ def execute_manual_flow(
 #----------------------------
 #  agent工具
 #----------------------------
-def run_for_agent(intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.2.16:8000/execute", show_img:bool=False, history:list=None):
+def run_for_agent(user_id:str, intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.68.16:8000/execute", show_img:bool=False, history:list=None):
     """
     执行 GUI Agent 任务，根据自然语言意图自动操作桌面。
 
     Args:
+        user_id (str): 用户的唯一标识符，用于区分不同的会话。
         intent (str): 用户的自然语言意图，例如 "在桌面上打开此电脑图标"。
         max_attempts (int, optional): 最大尝试次数。默认为 5。
-        gui_client_url (str, optional): GUI 执行器的 URL 地址。默认为 "http://192.168.2.16:8000/execute"。
+        gui_client_url (str, optional): GUI 执行器的 URL 地址。默认为 "http://192.168.68.16:8000/execute"。
         show_img (bool, optional): 是否在成功时返回截图 base64。默认为 False。
         history (list, optional): 聊天对话历史，用于上下文推断。默认为 None。
 
@@ -363,7 +364,14 @@ def run_for_agent(intent:str, max_attempts:int=5, gui_client_url:str="http://192
     
     from gui_agent import run_agent_task
     
-    response = run_agent_task(intent, max_attempts, gui_client_url, show_img, history)
+    response = run_agent_task(
+        user_id=user_id, 
+        intent=intent, 
+        history=history, 
+        max_attempts=max_attempts, 
+        gui_client_url=gui_client_url, 
+        show_img=show_img
+    )
     result = "GUI 操作结果\n\n"
     
     # 处理 query 类型（查询/描述屏幕）
@@ -385,13 +393,24 @@ def run_for_agent(intent:str, max_attempts:int=5, gui_client_url:str="http://192
 尝试次数：{response.get("attempts")}'''
         if show_img and response.get("img"):
             result += f'''
-截图(base64前50字符): {response["img"][:50]}...'''
+截图(base64): {response["img"]}'''
 
-    if response.get("status") == "failed":
+    elif response.get("status") == "failed":
         result += f'''操作失败：
 结果：{response.get("reason")}
 尝试次数：已达到最大尝试次数'''
 
+    elif response.get("status") == "rejected":
+        result += f'''操作被拒绝：
+结果：{response.get("reason")}'''
+
+    elif response.get("status") == "waiting_for_human":
+        result += f'''等待人工介入：
+结果：{response.get("reason")}
+尝试次数：{response.get("attempts")}'''
+        if show_img and response.get("img"):
+            result += f'''
+截图(base64): {response["img"]}'''
 
     return result
 
@@ -406,10 +425,11 @@ if __name__ == "__main__":
     
     if choice == "1":
         print("." * 50)
+        user_id = input("请输入测试用户ID (默认 test_user): ") or "test_user"
         intent = input("请输出你的操作意图：")
         max_attempts = 5
-        gui_client_url = "http://192.168.68.15:8000/execute"
-        print("*" * 50, f'\n{run_for_agent(intent=intent, max_attempts=max_attempts, gui_client_url=gui_client_url, show_img=True)}')
+        gui_client_url = "http://192.168.68.16:8000/execute"
+        print("*" * 50, f'\n{run_for_agent(user_id=user_id, intent=intent, max_attempts=max_attempts, gui_client_url=gui_client_url, show_img=True)}')
         
     elif choice == "2":
         print("." * 50)

@@ -35,7 +35,7 @@ def parse_json_response(response_text):
             return json.loads(match.group())
         raise
 
-def build_react_prompt(total_intent, chat_history, agent_history, current_ui_description="", skill_context=""):
+def build_react_prompt(total_intent, history, agent_history, current_ui_description="", skill_context=""):
     agent_history_str = ""
     if agent_history:
         agent_history_str = json.dumps(agent_history[-3:], ensure_ascii=False, indent=2)
@@ -43,8 +43,8 @@ def build_react_prompt(total_intent, chat_history, agent_history, current_ui_des
         agent_history_str = "无"
 
     chat_history_str = ""
-    if chat_history:
-        chat_history_str = json.dumps(chat_history, ensure_ascii=False, indent=2)
+    if history:
+        chat_history_str = json.dumps(history, ensure_ascii=False, indent=2)
     else:
         chat_history_str = "无"
 
@@ -90,7 +90,7 @@ Action: <具体的 API 调用 JSON>
 
 Action JSON 格式示例：
 {{
-    "target": "目标名称（如'此电脑'、'提交按钮'，如果没有具体目标则留空）",
+    "target": "目标名称（【极其重要】必须是屏幕上确切显示的文字，或标准的系统控件名称。绝对不要自己脑补加上'图标'、'按钮'、'输入框'等后缀！例如：应输出'此电脑'而不是'此电脑图标'，应输出'文件资源管理器'而不是'文件资源管理器图标'。如果没有具体目标则留空）",
     "action": "动作类型（如 click, type, finish 等）",
     "text": "输入文字、滚动方向或组合键（根据 action 类型填写，否则留空）",
     "key": "单键名称（仅当 action 为 key_press 时填写，否则留空）",
@@ -155,7 +155,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def run_react_loop(total_intent: str, chat_history: list, max_attempts: int, gui_client_url: str, show_img: bool, session_id: str):
+def run_react_loop(total_intent: str, history: list, max_attempts: int, gui_client_url: str, show_img: bool, session_id: str):
     print(f"\n>>> 开始执行 ReAct 循环任务: {total_intent}")
     
     # 1. 技能路由：根据总目标选择合适的技能
@@ -202,7 +202,7 @@ def run_react_loop(total_intent: str, chat_history: list, max_attempts: int, gui
         agent_history = redis_manager.get_history(session_id)
         
         # 2. 思考与动作 (Thought & Action)
-        prompt = build_react_prompt(total_intent, chat_history, agent_history, skill_context=skill_context)
+        prompt = build_react_prompt(total_intent, history, agent_history, skill_context=skill_context)
         try:
             response_text = glm_4_6v_flash(prompt, current_screenshot)
             print(f"[DEBUG] ReAct 原始响应:\n{response_text}")
@@ -262,28 +262,45 @@ def run_react_loop(total_intent: str, chat_history: list, max_attempts: int, gui
                 print(f"命中 Redis 缓存坐标: {target_name} -> {cached_coords}")
                 coords = cached_coords
             else:
-                # 尝试 OCR 定位
-                print(f"正在使用 QwenDetector 定位目标: {target_name} ...")
-                coords_result = qwen_detector.get_target_coords(current_screenshot, target_name)
-                if coords_result:
-                    coords = [coords_result["x"], coords_result["y"]]
-                    redis_manager.set_element_coords(session_id, target_name, coords)
-                    print(f"OCR 定位成功，物理坐标: {coords}，已存入 Redis 缓存")
-                else:
-                    # 尝试 VLM 坐标
-                    norm_x = action.get("norm_x", -1)
-                    norm_y = action.get("norm_y", -1)
-                    if norm_x != -1 and norm_y != -1:
-                        import base64
-                        from io import BytesIO
-                        from PIL import Image
-                        img_data = base64.b64decode(current_screenshot.replace('data:image/png;base64,', ''))
-                        with Image.open(BytesIO(img_data)) as img:
-                            width, height = img.size
-                        real_x = int(round((norm_x / 1000.0) * width))
-                        real_y = int(round((norm_y / 1000.0) * height))
-                        coords = [real_x, real_y]
-                        print(f"VLM 坐标换算成功: 物理坐标 {coords}")
+                # 尝试 UIA 定位
+                print(f"正在使用 UIAutomation 查找目标: {target_name} ...")
+                try:
+                    uia_res = requests.post(gui_client_url, json={
+                        "action": "find_element",
+                        "coords": [0, 0],
+                        "text": target_name,
+                        "session_id": session_id
+                    }, timeout=5).json()
+                    if uia_res.get("status") == "success" and uia_res.get("coords"):
+                        coords = uia_res.get("coords")
+                        redis_manager.set_element_coords(session_id, target_name, coords)
+                        print(f"UIA 定位成功，物理坐标: {coords}，已存入 Redis 缓存")
+                except Exception as e:
+                    print(f"UIA 定位请求异常: {e}")
+                
+                if not coords:
+                    # 尝试 OCR 定位
+                    print(f"正在使用 QwenDetector 定位目标: {target_name} ...")
+                    coords_result = qwen_detector.get_target_coords(current_screenshot, target_name)
+                    if coords_result:
+                        coords = [coords_result["x"], coords_result["y"]]
+                        redis_manager.set_element_coords(session_id, target_name, coords)
+                        print(f"OCR 定位成功，物理坐标: {coords}，已存入 Redis 缓存")
+                    else:
+                        # 尝试 VLM 坐标
+                        norm_x = action.get("norm_x", -1)
+                        norm_y = action.get("norm_y", -1)
+                        if norm_x != -1 and norm_y != -1:
+                            import base64
+                            from io import BytesIO
+                            from PIL import Image
+                            img_data = base64.b64decode(current_screenshot.replace('data:image/png;base64,', ''))
+                            with Image.open(BytesIO(img_data)) as img:
+                                width, height = img.size
+                            real_x = int(round((norm_x / 1000.0) * width))
+                            real_y = int(round((norm_y / 1000.0) * height))
+                            coords = [real_x, real_y]
+                            print(f"VLM 坐标换算成功: 物理坐标 {coords}")
                         
         if not coords and action_type in ["click", "double_click"]:
             print(f"定位目标 {target_name} 失败，无法执行点击动作。")
@@ -374,20 +391,27 @@ def run_react_loop(total_intent: str, chat_history: list, max_attempts: int, gui
 
 import uuid
 
-def run_agent_task(rebuild_data: dict, chat_history: list, max_attempts: int=5, gui_client_url: str="http://192.168.2.16:8000/execute", show_img: bool=False):
-    # 提取关键信息
-    try:
-        user_id = str(rebuild_data["from_user"]["user_id"])
-        intent = rebuild_data["raw_message"]
-    except KeyError as e:
-        print(f"解析 rebuild_data 失败，缺少字段: {e}")
-        return {"status": "failed", "reason": f"解析 rebuild_data 失败: {e}"}
-
+def run_agent_task(user_id: str, intent: str, history: list, max_attempts: int=5, gui_client_url: str="http://192.168.2.16:8000/execute", show_img: bool=False):
     print(f"========== 开始执行总任务: {intent} ==========")
     
-    session_id = user_id
+    session_id = str(user_id)
     print(f"任务 Session ID (User ID): {session_id}")
     
+    # 处理强制结束指令
+    if intent.strip() == "/end":
+        print(f"收到强制结束指令，正在清理用户 {session_id} 的任务状态...")
+        redis_manager.set_task_status(session_id, "failed")
+        try:
+            redis_manager.redis_client.delete(f"task:{session_id}:history")
+            requests.post(gui_client_url, json={
+                "action": "release_lock",
+                "coords": [0, 0],
+                "session_id": session_id
+            }, timeout=3)
+        except Exception as e:
+            print(f"清理任务状态时发生异常: {e}")
+        return {"status": "success", "reason": "已强制结束当前任务并清理状态"}
+
     # 检查状态 (保护性拒绝)
     status = redis_manager.get_task_status(session_id)
     if status == "running":
@@ -422,7 +446,7 @@ def run_agent_task(rebuild_data: dict, chat_history: list, max_attempts: int=5, 
             return {"status": "failed", "reason": f"无法连接到执行器服务端: {e}"}
 
         # 直接使用 ReAct 循环处理总任务
-        result = run_react_loop(intent, chat_history, max_attempts, gui_client_url, show_img, session_id)
+        result = run_react_loop(intent, history, max_attempts, gui_client_url, show_img, session_id)
         
         print("\n========== 总任务执行完毕 ==========")
         return result
@@ -442,15 +466,11 @@ def run_agent_task(rebuild_data: dict, chat_history: list, max_attempts: int=5, 
 
 if __name__ == "__main__":
     # 保持你的 API Key 不变
+    user_id = input("请输入测试用户ID (默认 test_user_001): ") or "test_user_001"
     intent = input("请输出你的指令：")
     gui_client_url = input("请输入目标接口 (默认 http://192.168.68.15:8000/execute): ") or "http://192.168.68.15:8000/execute"
     
-    # 模拟 rebuild_data 和 history
-    mock_rebuild_data = {
-        "from_user": {"user_id": "test_user_001"},
-        "raw_message": intent
-    }
     mock_history = []
     
-    response = run_agent_task(rebuild_data=mock_rebuild_data, chat_history=mock_history, gui_client_url=gui_client_url)
+    response = run_agent_task(user_id=user_id, intent=intent, history=mock_history, gui_client_url=gui_client_url)
     print(json.dumps(response,ensure_ascii=False,indent=4))
