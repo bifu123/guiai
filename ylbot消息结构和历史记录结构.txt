@@ -1,0 +1,32 @@
+ rebuild_data
+{
+  "message_id": 1283239502,
+  "bot": {
+    "bot_id": "3787687088",
+    "bot_nick_name": "孙膑"
+  },
+  "raw_message": "打开我的电脑",
+  "message": [
+    {
+      "type": "text",
+      "data": {
+        "text": "打开我的电脑"
+      }
+    }
+  ],
+  "source_id": "815669761",
+  "method": "group",
+  "from_user": {
+    "user_id": "415135222",
+    "user_nick_name": "廉颇"
+  },
+  "source": "onebot",
+  "source_key": "napchat",
+  "name_space": "default",
+  "method_allow": [
+    "private",
+    "group_at"
+  ],
+  "is_must_answer": "no",
+  "callback_url": "http://192.168.68.15:8087"
+}

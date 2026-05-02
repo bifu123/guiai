@@ -1,0 +1,29 @@
+# ylbot 2.0 本地工具库 (Local dev_dev_tools Library)
+
+你拥有以下本地 Python 脚本工具，它将有助于你了解本项目开发的战略意义，对齐开发目标，请根据任务需求自主选择调用。
+
+**重要提示**
+- 本地开发环境为windows，请在运命令时使用powershell，多个命令组合请使用`;`，而不是`&&`
+- 在运行命令时首先要`conda activate guiai`激活环境
+- windows不支持在终端中直接输入复杂python脚本测试
+
+
+### Causal AI 搜索工具 (Causal Search CLI)
+- **职责**: 用键词获取因果事件。
+- **脚本位置**: `python dev_tools/search_causal_by_keyword_cli.py`
+- **调用规范**: 
+  - 基础搜索: `python dev_tools/search_causal_by_keyword.py "关键词"`
+  - 指定用户: `python dev_tools/search_causal_by_keyword.py "GUI AI" --owner "815669761"`
+  - 限制数量: `python dev_tools/search_causal_by_keyword.py "GUI" --limit 10`
+- **决策逻辑**: 当用户提到“查询历史事件”、“找找关于...的联系”或涉及“ylbot”项目的数据时，优先使用此工具。
+
+## Causal AI 点击与激活工具 (Causal Click CLI)
+- **职责**: 模拟用户点击行为，获取该事件节点的详情。查看详情并了解它的前后涉及的因果事件（通常先用`python dev_tools/search_causal_by_keyword_cli.py`来获取`serial_id`，再执行此工具）
+- **脚本位置**: `python dev_tools/search_causal_by_serial_cli.py`
+- **调用规范**: 
+  - 基础点击: `python dev_tools/search_causal_by_serial_cli.py <serial_id>`
+  - 指定拥有者: `python dev_tools/search_causal_by_serial_cli.py <serial_id> --owner "815669761"`
+  - 模拟特定用户点击: `python dev_tools/search_causal_by_serial_cli.py <serial_id> --actor "user2"`
+- **决策逻辑**: 当用户要求“关注这个事件、了解、获得这个事件的详情”，使用此工具。
+- 1. 必须注意 `Parents` 和 `Children` 是**列表格式（List）**，代表多因多果关系。
+- 2. 如果需要回溯原因或推演结果，请遍历这些列表中的有关 ID，并逐一调用相应的查询业务。

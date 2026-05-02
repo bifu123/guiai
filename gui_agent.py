@@ -35,12 +35,18 @@ def parse_json_response(response_text):
             return json.loads(match.group())
         raise
 
-def build_react_prompt(total_intent, history, current_ui_description="", skill_context=""):
-    history_str = ""
-    if history:
-        history_str = json.dumps(history[-3:], ensure_ascii=False, indent=2)
+def build_react_prompt(total_intent, chat_history, agent_history, current_ui_description="", skill_context=""):
+    agent_history_str = ""
+    if agent_history:
+        agent_history_str = json.dumps(agent_history[-3:], ensure_ascii=False, indent=2)
     else:
-        history_str = "无"
+        agent_history_str = "无"
+
+    chat_history_str = ""
+    if chat_history:
+        chat_history_str = json.dumps(chat_history, ensure_ascii=False, indent=2)
+    else:
+        chat_history_str = "无"
 
     skill_section = ""
     if skill_context:
@@ -51,8 +57,11 @@ def build_react_prompt(total_intent, history, current_ui_description="", skill_c
 
 【总目标】: {total_intent}
 {skill_section}
-【历史轨迹 (最近3步)】:
-{history_str}
+【对话历史上下文】:
+{chat_history_str}
+
+【Agent 历史轨迹 (最近3步)】:
+{agent_history_str}
 
 【当前 UI 描述】:
 {current_ui_description}
@@ -70,6 +79,7 @@ def build_react_prompt(total_intent, history, current_ui_description="", skill_c
 - `key_press` - 按下单个按键（如 "enter" 回车确认, "backspace" 退格删除, "delete" 删除, "esc" 等，必须在 key 字段提供按键名）
 - `hotkey` - 组合快捷键（此时必须在 text 字段提供组合键，如 "ctrl+a" 全选, "ctrl+c" 复制, "ctrl+v" 粘贴）
 - `window_control` - 窗口控制（此时必须在 text 字段提供 "maximize", "minimize" 或 "close"）
+- `wait_for_human` - 等待人工介入（当遇到需要人类完成的操作，如扫码登录、刷脸、输入复杂验证码时使用。必须在 text 字段说明需要人类做什么）
 - `finish` - 任务完成（当总目标已经实现时使用）
 
 【输出格式要求】：
@@ -145,7 +155,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def run_react_loop(total_intent: str, max_attempts: int, gui_client_url: str, show_img: bool, session_id: str):
+def run_react_loop(total_intent: str, chat_history: list, max_attempts: int, gui_client_url: str, show_img: bool, session_id: str):
     print(f"\n>>> 开始执行 ReAct 循环任务: {total_intent}")
     
     # 1. 技能路由：根据总目标选择合适的技能
@@ -189,10 +199,10 @@ def run_react_loop(total_intent: str, max_attempts: int, gui_client_url: str, sh
             return {"status": "failed", "reason": f"获取截图失败: {initial_res.get('detail', '未知错误')}"}
             
         # 获取历史记录
-        history = redis_manager.get_history(session_id)
+        agent_history = redis_manager.get_history(session_id)
         
         # 2. 思考与动作 (Thought & Action)
-        prompt = build_react_prompt(total_intent, history, skill_context=skill_context)
+        prompt = build_react_prompt(total_intent, chat_history, agent_history, skill_context=skill_context)
         try:
             response_text = glm_4_6v_flash(prompt, current_screenshot)
             print(f"[DEBUG] ReAct 原始响应:\n{response_text}")
@@ -219,6 +229,27 @@ def run_react_loop(total_intent: str, max_attempts: int, gui_client_url: str, sh
             redis_manager.set_task_status(session_id, "success")
             redis_manager.add_history(session_id, thought, action, "Success: 任务完成")
             break
+            
+        if action_type == "wait_for_human":
+            human_task = action.get("text", "请完成必要的操作")
+            print(f"\n==================================================")
+            print(f"🤖 Agent 请求人工介入: {human_task}")
+            print(f"==================================================")
+            
+            # 记录历史，说明正在等待人类介入
+            redis_manager.add_history(session_id, thought, action, "Waiting: 等待人类完成操作")
+            redis_manager.set_task_status(session_id, "waiting_for_human")
+            
+            # 中断循环，返回状态给调用方
+            final_result = {
+                "status": "waiting_for_human", 
+                "reason": human_task, 
+                "session_id": session_id,
+                "attempts": loop_count
+            }
+            if show_img:
+                final_result["img"] = current_screenshot
+            return final_result
             
         target_name = action.get("target")
         coords = None
@@ -343,12 +374,36 @@ def run_react_loop(total_intent: str, max_attempts: int, gui_client_url: str, sh
 
 import uuid
 
-def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.2.16:8000/execute", show_img:bool=False, history:list=None):
+def run_agent_task(rebuild_data: dict, chat_history: list, max_attempts: int=5, gui_client_url: str="http://192.168.2.16:8000/execute", show_img: bool=False):
+    # 提取关键信息
+    try:
+        user_id = str(rebuild_data["from_user"]["user_id"])
+        intent = rebuild_data["raw_message"]
+    except KeyError as e:
+        print(f"解析 rebuild_data 失败，缺少字段: {e}")
+        return {"status": "failed", "reason": f"解析 rebuild_data 失败: {e}"}
+
     print(f"========== 开始执行总任务: {intent} ==========")
     
-    # 生成本次任务的唯一 Session ID
-    session_id = str(uuid.uuid4())
-    print(f"分配任务 Session ID: {session_id}")
+    session_id = user_id
+    print(f"任务 Session ID (User ID): {session_id}")
+    
+    # 检查状态 (保护性拒绝)
+    status = redis_manager.get_task_status(session_id)
+    if status == "running":
+        print(f"用户 {session_id} 有任务正在执行中，保护性拒绝。")
+        return {"status": "rejected", "reason": "您有一个任务正在执行中，请稍候"}
+    elif status == "waiting_for_human":
+        print("人类已完成操作，继续执行任务...")
+        # 可以在这里追加一条历史记录，告诉模型人类已经完成了操作
+        redis_manager.add_history(session_id, "人类介入", {"action": "human_action"}, "Success: 人类已完成操作")
+    elif status in ["success", "failed"]:
+        print(f"任务已结束 (状态: {status})，将作为新任务重新开始。")
+        # 清理旧的历史记录，准备开始新任务
+        try:
+            redis_manager.redis_client.delete(f"task:{session_id}:history")
+        except:
+            pass
     
     try:
         # --- 新增：在语义切分前，先尝试获取锁（通过请求一次截图） ---
@@ -367,13 +422,14 @@ def run_agent_task(intent:str, max_attempts:int=5, gui_client_url:str="http://19
             return {"status": "failed", "reason": f"无法连接到执行器服务端: {e}"}
 
         # 直接使用 ReAct 循环处理总任务
-        result = run_react_loop(intent, max_attempts, gui_client_url, show_img, session_id)
+        result = run_react_loop(intent, chat_history, max_attempts, gui_client_url, show_img, session_id)
         
         print("\n========== 总任务执行完毕 ==========")
         return result
         
     finally:
-        # 无论任务成功、失败还是异常，都主动释放服务端的锁
+        # 只有当任务真正结束（成功或失败）时，才释放锁。如果是等待人类，则保留锁（或根据业务需求决定是否释放）
+        # 为了防止死锁，这里我们依然释放服务端的执行锁，因为等待人类期间不需要占用执行器
         print(f"正在释放任务 Session 锁: {session_id}")
         try:
             requests.post(gui_client_url, json={
@@ -388,5 +444,13 @@ if __name__ == "__main__":
     # 保持你的 API Key 不变
     intent = input("请输出你的指令：")
     gui_client_url = input("请输入目标接口 (默认 http://192.168.68.15:8000/execute): ") or "http://192.168.68.15:8000/execute"
-    response = run_agent_task(intent=rf'{intent}', gui_client_url=gui_client_url)
+    
+    # 模拟 rebuild_data 和 history
+    mock_rebuild_data = {
+        "from_user": {"user_id": "test_user_001"},
+        "raw_message": intent
+    }
+    mock_history = []
+    
+    response = run_agent_task(rebuild_data=mock_rebuild_data, chat_history=mock_history, gui_client_url=gui_client_url)
     print(json.dumps(response,ensure_ascii=False,indent=4))
