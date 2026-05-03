@@ -1,12 +1,11 @@
 import requests
 import json
+import threading
 
 def test_gui_server(intent, url):
     """
     模拟向 gui_server.py 发送请求
     """
-
-    
     # 构造请求数据，匹配 gui_server.py 中的 AgentRequest 模型
     payload = {
         "user_id": "3787687088",
@@ -39,24 +38,39 @@ def test_gui_server(intent, url):
         "show_img": True
     }
     
-    print(f"正在向 {url} 发送请求...")
-    print(f"请求数据: {json.dumps(payload, ensure_ascii=False, indent=2)}")
+    print(f"\n[线程启动] 正在向 {url} 发送请求: {intent}")
     
     try:
         response = requests.post(url, json=payload)
         response.raise_for_status() # 检查 HTTP 错误
         
         result = response.json()
-        print("\n--- 响应结果 ---")
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(f"\n--- 响应结果 (意图: {intent}) ---")
+        # 如果截图存在，打印前 50 个字符作为示意
+        if "img" in result and result["img"]:
+            screenshot_preview = result["img"][:50] + "..."
+            print_result = result.copy()
+            print_result["img"] = screenshot_preview
+            print(json.dumps(print_result, ensure_ascii=False, indent=2))
+        else:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
         
     except requests.exceptions.RequestException as e:
-        print(f"\n请求失败: {e}")
+        print(f"\n[请求失败] (意图: {intent}): {e}")
         if hasattr(e, 'response') and e.response is not None:
             print(f"服务器返回: {e.response.text}")
 
 if __name__ == "__main__":
+    print("GUI Agent 测试客户端已启动。")
+    print("提示：输入指令后会后台执行，你可以随时输入新指令或输入 /end 终止任务。")
+    url = "http://192.168.2.16:8001/api/run_for_agent"
+    
     while True:
-        url = "http://192.168.2.16:8001/api/run_for_agent"
-        intent = input("请输入你的指令：")
-        test_gui_server(intent, url)
+        intent = input("\n请输入你的指令：")
+        if not intent.strip():
+            continue
+            
+        # 使用多线程发送请求，避免阻塞主线程的 input
+        thread = threading.Thread(target=test_gui_server, args=(intent, url))
+        thread.daemon = True
+        thread.start()

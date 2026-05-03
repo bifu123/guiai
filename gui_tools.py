@@ -397,6 +397,8 @@ def run_for_agent(user_id:str, intent:str, max_attempts:int=5, gui_client_url:st
         result_dict["result"] += f'''操作被拒绝：\n结果：{response.get("reason")}'''
     elif response.get("status") == "waiting_for_human":
         result_dict["result"] += f'''等待人工介入：\n结果：{response.get("reason")}'''
+    elif response.get("status") == "updated":
+        result_dict["result"] += f'''任务已更新：\n结果：{response.get("reason")}'''
 
     return result_dict
 

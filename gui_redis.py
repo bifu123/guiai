@@ -38,5 +38,11 @@ class RedisContextManager:
         
     def get_summary(self, session_id):
         return self.redis_client.get(f"task:{session_id}:summary")
+        
+    def set_task_intent(self, session_id, intent):
+        self.redis_client.set(f"task:{session_id}:current_intent", intent)
+        
+    def get_task_intent(self, session_id):
+        return self.redis_client.get(f"task:{session_id}:current_intent")
 
 redis_manager = RedisContextManager()

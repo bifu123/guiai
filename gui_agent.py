@@ -69,6 +69,7 @@ def build_react_prompt(total_intent, history, agent_history, current_ui_descript
 【执行职责】：
 1. 结合当前截图与总目标，分析现状（例如：“我看到了登录按钮，但我需要先输入账号”），并解释为什么要执行下一步。
 2. 决定下一步的具体动作。
+3. 【重要回退机制】：当发现目标难以定位（如历史记录中提示“未找到目标”），或者点击操作验证失败时，优先考虑使用 `hotkey` 快捷键来达成目的（例如使用 `win+d` 回到桌面，`alt+f4` 关闭窗口，`win+e` 打开资源管理器等）。
 
 【动作类型 (action)】:
 - `click` - 单击（一般用于获得焦点、单击网页链接、单击普通按钮等）
@@ -155,12 +156,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def run_react_loop(total_intent: str, history: list, max_attempts: int, gui_client_url: str, show_img: bool, session_id: str):
-    print(f"\n>>> 开始执行 ReAct 循环任务: {total_intent}")
+def run_react_loop(initial_intent: str, history: list, max_attempts: int, gui_client_url: str, show_img: bool, session_id: str):
+    print(f"\n>>> 开始执行 ReAct 循环任务: {initial_intent}")
+    
+    # 初始化当前意图
+    redis_manager.set_task_intent(session_id, initial_intent)
     
     # 1. 技能路由：根据总目标选择合适的技能
     print("正在分析任务意图，匹配专属技能...")
-    skill_context = skill_manager.select_skill(total_intent)
+    skill_context = skill_manager.select_skill(initial_intent)
     if skill_context:
         print("已加载专属技能指导。")
     else:
@@ -175,8 +179,23 @@ def run_react_loop(total_intent: str, history: list, max_attempts: int, gui_clie
     final_result = {"status": "failed", "reason": "达到最大循环次数"}
     
     while not task_completed and loop_count < max_loops:
+        # 检查是否被外部（如 /end 指令或新指令）强制终止或打断
+        current_status = redis_manager.get_task_status(session_id)
+        if current_status == "failed":
+            print(f"检测到任务状态已被外部终止，退出循环。")
+            final_result = {"status": "failed", "reason": "任务已被强制终止"}
+            break
+        elif current_status == "interrupted":
+            print(f"检测到新指令打断，当前循环交出控制权并退出。")
+            final_result = {"status": "interrupted", "reason": "被新指令打断"}
+            break
+            
         loop_count += 1
         print(f"\n--- ReAct 循环 第 {loop_count}/{max_loops} 次 ---")
+        
+        # 动态读取最新意图
+        current_intent = redis_manager.get_task_intent(session_id) or initial_intent
+        print(f"当前执行意图: {current_intent}")
         
         # 1. 观察 (Observation) - 获取截图
         try:
@@ -202,7 +221,7 @@ def run_react_loop(total_intent: str, history: list, max_attempts: int, gui_clie
         agent_history = redis_manager.get_history(session_id)
         
         # 2. 思考与动作 (Thought & Action)
-        prompt = build_react_prompt(total_intent, history, agent_history, skill_context=skill_context)
+        prompt = build_react_prompt(current_intent, history, agent_history, skill_context=skill_context)
         try:
             response_text = glm_4_6v_flash(prompt, current_screenshot)
             print(f"[DEBUG] ReAct 原始响应:\n{response_text}")
@@ -409,10 +428,16 @@ def run_agent_task(user_id: str, intent: str, history: list, max_attempts: int=5
     
     # 处理强制结束指令
     if intent.strip() == "/end":
-        print(f"收到强制结束指令，正在清理用户 {session_id} 的任务状态...")
+        print(f"收到强制结束指令，正在清理用户 {session_id} 的所有任务状态...")
         redis_manager.set_task_status(session_id, "failed")
         try:
+            # 清理所有相关的 Redis 键
             redis_manager.redis_client.delete(f"task:{session_id}:history")
+            redis_manager.redis_client.delete(f"task:{session_id}:current_intent")
+            redis_manager.redis_client.delete(f"task:{session_id}:summary")
+            redis_manager.redis_client.delete(f"task:{session_id}:elements")
+            
+            # 释放执行器锁
             requests.post(gui_client_url, json={
                 "action": "release_lock",
                 "coords": [0, 0],
@@ -420,13 +445,41 @@ def run_agent_task(user_id: str, intent: str, history: list, max_attempts: int=5
             }, timeout=3)
         except Exception as e:
             print(f"清理任务状态时发生异常: {e}")
-        return {"status": "success", "reason": "已强制结束当前任务并清理状态"}
+        return {"status": "success", "reason": "已强制结束当前任务并清理所有状态"}
 
-    # 检查状态 (保护性拒绝)
+    # 检查状态 (保护性拒绝或动态更新)
     status = redis_manager.get_task_status(session_id)
     if status == "running":
-        print(f"用户 {session_id} 有任务正在执行中，保护性拒绝。")
-        return {"status": "failed", "reason": "当前有其他任务正在执行，请稍后再试"}
+        print(f"用户 {session_id} 有任务正在执行中，准备打断并接管...")
+        # 1. 获取旧意图并融合
+        old_intent = redis_manager.get_task_intent(session_id) or ""
+        merged_intent = f"最初目标：{old_intent}\n用户最新补充/修改：{intent}"
+        print(f"融合后的新意图:\n{merged_intent}")
+        
+        # 2. 更新意图并标记打断状态
+        redis_manager.set_task_intent(session_id, merged_intent)
+        redis_manager.set_task_status(session_id, "interrupted")
+        redis_manager.add_history(session_id, "系统通知", {"action": "update_intent"}, f"用户下达了新指令，重新评估规划: {intent}")
+        
+        # 3. 等待旧循环退出 (最多等待 15 秒)
+        wait_time = 0
+        while wait_time < 15:
+            # 如果旧循环已经退出，它可能还没来得及改状态，但我们自己接管后会重新设为 running
+            # 这里我们主要靠时间延迟让旧循环有机会检测到 interrupted 并 break
+            time.sleep(1)
+            wait_time += 1
+            print(f"等待旧任务退出... ({wait_time}s)")
+            # 简单起见，等待 3 秒通常足够旧循环在下一次检查时退出
+            if wait_time >= 3:
+                break
+                
+        print("接管控制权，启动新的 ReAct 循环...")
+        # 重新设置为 running，开始新的循环
+        redis_manager.set_task_status(session_id, "running")
+        # 注意：这里直接调用 run_react_loop，它会继续使用之前的 history
+        result = run_react_loop(merged_intent, history, max_attempts, gui_client_url, show_img, session_id)
+        return result
+        
     elif status == "waiting_for_human":
         print("人类已完成操作，继续执行任务...")
         # 可以在这里追加一条历史记录，告诉模型人类已经完成了操作
