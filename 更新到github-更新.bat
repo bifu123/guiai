@@ -57,9 +57,11 @@ if !errorlevel! eq 0 (
 )
 
 :FINISH
-:: 6. 清理并退出
 popd
-echo [INFO] 脚本运行完毕。
-timeout /t 5
-
+echo.
+echo ========================================
+echo   所有职责处理完毕。
+echo   退出时间: %date% %time%
+echo ========================================
+:: 使用 pause 强制拦截，不使用 timeout
 pause
