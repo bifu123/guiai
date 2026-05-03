@@ -346,7 +346,7 @@ def execute_manual_flow(
 #----------------------------
 #  agent工具
 #----------------------------
-def run_for_agent(user_id:str, intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.68.16:8000/execute", show_img:bool=False, history:list=None):
+def run_for_agent(user_id:str, intent:str, max_attempts:int=5, gui_client_url:str="http://192.168.68.16:8000/execute", show_img:bool=False, history:list=None) -> Dict[str, Any]:
     """
     执行 GUI Agent 任务，根据自然语言意图自动操作桌面。
 
@@ -359,7 +359,7 @@ def run_for_agent(user_id:str, intent:str, max_attempts:int=5, gui_client_url:st
         history (list, optional): 聊天对话历史，用于上下文推断。默认为 None。
 
     Returns:
-        str: 包含操作结果、坐标和尝试次数的格式化字符串。
+        Dict[str, Any]: 包含操作结果、坐标、尝试次数和截图的字典。
     """
     
     from gui_agent import run_agent_task
@@ -372,47 +372,33 @@ def run_for_agent(user_id:str, intent:str, max_attempts:int=5, gui_client_url:st
         gui_client_url=gui_client_url, 
         show_img=show_img
     )
-    result = "GUI 操作结果\n\n"
+    
+    # 构造返回的字典结构
+    result_dict = {
+        "result": "GUI 操作结果\n\n",
+        "coords": response.get("coords"),
+        "attempts": response.get("attempts"),
+        "img": response.get("img") if show_img else None
+    }
     
     # 处理 query 类型（查询/描述屏幕）
     if response.get("action_type") == "query":
-        result += f'''屏幕描述：
-{response.get("description", "无法描述屏幕内容")}'''
-        if show_img and response.get("img"):
-            result += f'''
-截图(base64前50字符): {response["img"][:50]}...'''
-            # 执行发送图片的逻辑
-            
-        return result
+        result_dict["result"] += f'''屏幕描述：\n{response.get("description", "无法描述屏幕内容")}'''
+        return result_dict
     
     # 处理 operate 类型（操作型）
     if response.get("status") == "success":
-        result += f'''操作成功：
-结果：{response.get("reason")}
-坐标：{response.get("coords")}
-尝试次数：{response.get("attempts")}'''
-        if show_img and response.get("img"):
-            result += f'''
-截图(base64): {response["img"]}'''
-
+        result_dict["result"] += f'''操作成功：\n结果：{response.get("reason")}'''
     elif response.get("status") == "failed":
-        result += f'''操作失败：
-结果：{response.get("reason")}
-尝试次数：已达到最大尝试次数'''
-
+        result_dict["result"] += f'''操作失败：\n结果：{response.get("reason")}'''
+        if "当前有其他任务正在执行" in response.get("reason", ""):
+            result_dict["result"] += f'''\n建议：如果需要立即开始本任务，请先发送`/end`结束先前任务'''
     elif response.get("status") == "rejected":
-        result += f'''操作被拒绝：
-结果：{response.get("reason")}'''
-
+        result_dict["result"] += f'''操作被拒绝：\n结果：{response.get("reason")}'''
     elif response.get("status") == "waiting_for_human":
-        result += f'''等待人工介入：
-结果：{response.get("reason")}
-尝试次数：{response.get("attempts")}'''
-        if show_img and response.get("img"):
-            result += f'''
-截图(base64): {response["img"]}'''
+        result_dict["result"] += f'''等待人工介入：\n结果：{response.get("reason")}'''
 
-    return result
+    return result_dict
 
 
 if __name__ == "__main__":

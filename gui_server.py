@@ -54,7 +54,7 @@ def api_run_for_agent(req: AgentRequest):
             show_img=req.show_img,
             history=req.history
         )
-        return {"result": result}
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

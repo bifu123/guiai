@@ -426,7 +426,7 @@ def run_agent_task(user_id: str, intent: str, history: list, max_attempts: int=5
     status = redis_manager.get_task_status(session_id)
     if status == "running":
         print(f"用户 {session_id} 有任务正在执行中，保护性拒绝。")
-        return {"status": "rejected", "reason": "您有一个任务正在执行中，请稍候"}
+        return {"status": "failed", "reason": "当前有其他任务正在执行，请稍后再试"}
     elif status == "waiting_for_human":
         print("人类已完成操作，继续执行任务...")
         # 可以在这里追加一条历史记录，告诉模型人类已经完成了操作

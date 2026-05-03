@@ -9,7 +9,7 @@ def test_gui_server(intent, url):
     
     # 构造请求数据，匹配 gui_server.py 中的 AgentRequest 模型
     payload = {
-        "user_id": "test_user_123",
+        "user_id": "3787687088",
         "intent": intent,
         "history": [
             {
