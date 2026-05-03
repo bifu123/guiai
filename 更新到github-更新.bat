@@ -61,3 +61,5 @@ if !errorlevel! eq 0 (
 popd
 echo [INFO] 脚本运行完毕。
 timeout /t 5
+
+pause
