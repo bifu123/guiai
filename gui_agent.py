@@ -3,6 +3,7 @@ import base64
 import time
 import requests
 import json
+
 from gui_vl import glm_4_6v_flash
 from ocr_service import QwenDetector
 from ocr_openrouter import OpenRouterDetector
@@ -10,7 +11,12 @@ from gui_parser import parse_intent
 from gui_redis import redis_manager
 from gui_skills import skill_manager
 
-gui_client_url = "http://192.168.2.16:8000/execute"
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+gui_client_url = os.getenv("GUI_CLIENT_URL")
 qwen_detector = QwenDetector()
 # qwen_detector = QwenDetector()
 
@@ -420,7 +426,7 @@ def run_react_loop(initial_intent: str, history: list, max_attempts: int, gui_cl
 
 import uuid
 
-def run_agent_task(user_id: str, intent: str, history: list, max_attempts: int=5, gui_client_url: str="http://192.168.2.16:8000/execute", show_img: bool=False):
+def run_agent_task(user_id: str, intent: str, history: list, max_attempts: int=5, gui_client_url: str=os.getenv("GUI_CLIENT_URL"), show_img: bool=False):
     print(f"========== 开始执行总任务: {intent} ==========")
     
     session_id = str(user_id)
@@ -555,7 +561,7 @@ if __name__ == "__main__":
     # 保持你的 API Key 不变
     user_id = input("请输入测试用户ID (默认 test_user_001): ") or "test_user_001"
     intent = input("请输出你的指令：")
-    gui_client_url = input("请输入目标接口 (默认 http://192.168.68.15:8000/execute): ") or "http://192.168.68.15:8000/execute"
+    gui_client_url = input("请输入目标接口 (默认 http://192.168.68.15:8000/execute): ") or os.getenv("GUI_CLIENT_URL")
     
     mock_history = []
     

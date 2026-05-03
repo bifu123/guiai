@@ -1,6 +1,10 @@
 import requests
 import json
 import threading
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def test_gui_server(intent, url):
     """
@@ -34,7 +38,7 @@ def test_gui_server(intent, url):
             }
         ],
         "max_attempts": 3,
-        "gui_client_url": "http://192.168.68.16:8000/execute",
+        "gui_client_url": os.getenv("GUI_CLIENT_URL"),
         "show_img": True
     }
     
@@ -63,7 +67,7 @@ def test_gui_server(intent, url):
 if __name__ == "__main__":
     print("GUI Agent 测试客户端已启动。")
     print("提示：输入指令后会后台执行，你可以随时输入新指令或输入 /end 终止任务。")
-    url = "http://192.168.2.16:8001/api/run_for_agent"
+    url = os.getenv("GUI_SERVER_URL")
     
     while True:
         intent = input("\n请输入你的指令：")
