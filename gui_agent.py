@@ -437,6 +437,9 @@ def run_agent_task(user_id: str, intent: str, history: list, max_attempts: int=5
             redis_manager.redis_client.delete(f"task:{session_id}:summary")
             redis_manager.redis_client.delete(f"task:{session_id}:elements")
             
+            # 释放全局占用锁
+            redis_manager.clear_global_active_user(session_id)
+            
             # 释放执行器锁
             requests.post(gui_client_url, json={
                 "action": "release_lock",
@@ -446,6 +449,19 @@ def run_agent_task(user_id: str, intent: str, history: list, max_attempts: int=5
         except Exception as e:
             print(f"清理任务状态时发生异常: {e}")
         return {"status": "success", "reason": "已强制结束当前任务并清理所有状态"}
+
+    # --- 全局保护性拒绝机制 ---
+    active_user = redis_manager.get_global_active_user()
+    if active_user and active_user != session_id:
+        # 检查占用者是否真的在运行任务
+        active_user_status = redis_manager.get_task_status(active_user)
+        if active_user_status in ["running", "waiting_for_human"]:
+            print(f"全局保护触发: 用户 {session_id} 的请求被拒绝，因为 {active_user} 正在占用 Agent (状态: {active_user_status})")
+            return {"status": "failed", "reason": f"Agent 正在为其他用户执行任务，请稍后再试"}
+        else:
+            # 如果占用者的状态不是 running/waiting，说明可能是残留的锁，强制清除
+            print(f"发现残留的全局锁 (用户 {active_user} 状态为 {active_user_status})，强制清除。")
+            redis_manager.redis_client.delete("global:active_user")
 
     # 检查状态 (保护性拒绝或动态更新)
     status = redis_manager.get_task_status(session_id)
@@ -508,6 +524,9 @@ def run_agent_task(user_id: str, intent: str, history: list, max_attempts: int=5
             print(f"检查服务端状态失败: {e}")
             return {"status": "failed", "reason": f"无法连接到执行器服务端: {e}"}
 
+        # 获取全局占用锁
+        redis_manager.set_global_active_user(session_id)
+
         # 直接使用 ReAct 循环处理总任务
         result = run_react_loop(intent, history, max_attempts, gui_client_url, show_img, session_id)
         
@@ -526,6 +545,11 @@ def run_agent_task(user_id: str, intent: str, history: list, max_attempts: int=5
             }, timeout=3)
         except Exception as e:
             print(f"释放锁失败 (可能服务端已关闭): {e}")
+            
+        # 释放全局占用锁 (如果任务是 waiting_for_human，则不释放，保持占用)
+        current_status = redis_manager.get_task_status(session_id)
+        if current_status != "waiting_for_human":
+            redis_manager.clear_global_active_user(session_id)
 
 if __name__ == "__main__":
     # 保持你的 API Key 不变

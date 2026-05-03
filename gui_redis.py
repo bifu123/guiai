@@ -44,5 +44,25 @@ class RedisContextManager:
         
     def get_task_intent(self, session_id):
         return self.redis_client.get(f"task:{session_id}:current_intent")
+        
+    # --- 全局占用锁机制 ---
+    def set_global_active_user(self, session_id):
+        """设置当前占用 Agent 的用户"""
+        self.redis_client.set("global:active_user", session_id)
+        
+    def get_global_active_user(self):
+        """获取当前占用 Agent 的用户"""
+        return self.redis_client.get("global:active_user")
+        
+    def clear_global_active_user(self, session_id):
+        """
+        清除全局占用锁。
+        为了安全，只有当前占用者（或强制清理时）才能清除。
+        """
+        current_user = self.get_global_active_user()
+        if current_user == session_id or current_user is None:
+            self.redis_client.delete("global:active_user")
+            return True
+        return False
 
 redis_manager = RedisContextManager()
