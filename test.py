@@ -1,12 +1,11 @@
 import requests
 import json
 
-def test_gui_server():
+def test_gui_server(intent, url):
     """
     模拟向 gui_server.py 发送请求
     """
-    url = "http://192.168.2.16:8001/api/run_for_agent"
-    intent = input("请输入你的指令：")
+
     
     # 构造请求数据，匹配 gui_server.py 中的 AgentRequest 模型
     payload = {
@@ -37,7 +36,7 @@ def test_gui_server():
         ],
         "max_attempts": 3,
         "gui_client_url": "http://192.168.68.16:8000/execute",
-        "show_img": False
+        "show_img": True
     }
     
     print(f"正在向 {url} 发送请求...")
@@ -57,4 +56,7 @@ def test_gui_server():
             print(f"服务器返回: {e.response.text}")
 
 if __name__ == "__main__":
-    test_gui_server()
+    while True:
+        url = "http://192.168.2.16:8001/api/run_for_agent"
+        intent = input("请输入你的指令：")
+        test_gui_server(intent, url)

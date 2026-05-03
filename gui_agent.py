@@ -225,7 +225,17 @@ def run_react_loop(total_intent: str, history: list, max_attempts: int, gui_clie
             task_completed = True
             final_result = {"status": "success", "reason": "任务完成", "attempts": loop_count}
             if show_img:
-                final_result["img"] = current_screenshot
+                # 确保在 finish 时获取最新的截图
+                try:
+                    final_res = requests.post(gui_client_url, json={
+                        "action": "screenshot",
+                        "coords": [0, 0],
+                        "session_id": session_id
+                    }).json()
+                    final_result["img"] = final_res.get("screenshot", current_screenshot)
+                except Exception as e:
+                    print(f"获取最终截图失败: {e}")
+                    final_result["img"] = current_screenshot
             redis_manager.set_task_status(session_id, "success")
             redis_manager.add_history(session_id, thought, action, "Success: 任务完成")
             break
