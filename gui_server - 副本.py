@@ -5,27 +5,13 @@ from typing import List, Dict, Any, Union, Optional
 import json
 import os
 from dotenv import load_dotenv
-from contextlib import asynccontextmanager
 
 load_dotenv()
 
 # 导入需要封装的函数
 from gui_tools import execute_manual_flow, run_for_agent
-from gui_redis import redis_manager
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    print("正在清理 Redis 中的所有任务状态...")
-    redis_manager.clear_all_tasks()
-    print("清理完成。")
-    yield
-    # 这里可以添加关闭时的清理逻辑
-
-app = FastAPI(
-    title="GUI Agent Server", 
-    description="提供 GUI 自动化操作的 API 接口",
-    lifespan=lifespan
-)
+app = FastAPI(title="GUI Agent Server", description="提供 GUI 自动化操作的 API 接口")
 
 # 定义请求体模型
 class ManualFlowRequest(BaseModel):

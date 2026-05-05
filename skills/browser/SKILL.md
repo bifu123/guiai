@@ -1,6 +1,6 @@
 ---
 name: browser
-description: 当用户意图包含打开网页、输入网址、使用浏览器（如Chrome, Edge）时使用此技能。**输入网址时，请省略 `http://` 或 `https://`，直接输入域名（如 `www.baidu.com`）**，以避免中文输入法冲突导致字符丢失。
+description: 当用户意图包含打开网页、输入网址、使用浏览器（如Chrome, Edge）时使用此技能。
 ---
 
 # 浏览器导航技能指南

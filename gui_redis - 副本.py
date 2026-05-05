@@ -65,13 +65,4 @@ class RedisContextManager:
             return True
         return False
 
-    def clear_all_tasks(self):
-        """
-        清空所有任务相关的键以及全局占用锁。
-        """
-        keys = self.redis_client.keys("task:*")
-        if keys:
-            self.redis_client.delete(*keys)
-        self.redis_client.delete("global:active_user")
-
 redis_manager = RedisContextManager()
