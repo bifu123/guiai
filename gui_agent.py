@@ -38,7 +38,16 @@ def parse_json_response(response_text):
         import re
         match = re.search(r'\{.*\}', json_str, re.DOTALL)
         if match:
-            return json.loads(match.group())
+            extracted_str = match.group()
+            try:
+                return json.loads(extracted_str)
+            except:
+                # 尝试处理单引号的情况
+                try:
+                    import ast
+                    return ast.literal_eval(extracted_str)
+                except:
+                    pass
         raise
 
 def build_react_prompt(total_intent, history, agent_history, current_ui_description="", skill_context=""):
@@ -76,6 +85,7 @@ def build_react_prompt(total_intent, history, agent_history, current_ui_descript
 1. 结合当前截图与总目标，分析现状（例如：“我看到了登录按钮，但我需要先输入账号”），并解释为什么要执行下一步。
 2. 决定下一步的具体动作。
 3. 【重要回退机制】：当发现目标难以定位（如历史记录中提示“未找到目标”），或者点击操作验证失败时，优先考虑使用 `hotkey` 快捷键来达成目的（例如使用 `win+d` 回到桌面，`alt+f4` 关闭窗口，`win+e` 打开资源管理器等）。
+4. 【纯观察任务】：如果总目标仅仅是“观察”、“查看”、“描述”屏幕内容，而不需要进行任何实际的点击或输入操作，请在 Thought 中详细描述你看到的内容，并在 Action 中直接输出 `{{"action": "finish"}}`。
 
 【动作类型 (action)】:
 - `click` - 单击（一般用于获得焦点、单击网页链接、单击普通按钮等）
@@ -244,8 +254,13 @@ def run_react_loop(initial_intent: str, history: list, max_attempts: int, gui_cl
             
         if not action:
             print("未能解析出有效的 Action")
-            redis_manager.add_history(session_id, thought, {}, "Failed: 未能解析出有效的 Action")
-            continue
+            # 如果有 thought 但没有 action，且是观察类任务，或者已经重试多次，强制结束
+            if thought and ("查看" in current_intent or "观察" in current_intent or "描述" in current_intent or loop_count >= 3):
+                print("检测到纯观察任务或多次解析 Action 失败，强制结束任务。")
+                action = {"action": "finish"}
+            else:
+                redis_manager.add_history(session_id, thought, {}, "Failed: 未能解析出有效的 Action")
+                continue
             
         action_type = action.get("action")
         if action_type == "finish":
