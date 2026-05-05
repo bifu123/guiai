@@ -25,8 +25,8 @@ class AgentRequest(BaseModel):
     intent: str
     max_attempts: int = 5
     gui_client_url: str = os.getenv("GUI_CLIENT_URL")
-    show_img: bool = False
-    history: Optional[List[Dict[str, Any]]] = None
+    show_img: bool = True
+    history: Union[List[Dict], str] = None
 
 @app.post("/api/execute_manual_flow")
 def api_execute_manual_flow(req: ManualFlowRequest):
@@ -49,6 +49,13 @@ def api_run_for_agent(req: AgentRequest):
     """
     执行 GUI Agent 任务，根据自然语言意图自动操作桌面。
     """
+    try:
+        request = json.dumps(req, ensure_ascii=False, indent=4)
+        print(request)
+    except:
+        print(type(req), req)
+
+
     try:
         result = run_for_agent(
             user_id=req.user_id,
