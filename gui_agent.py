@@ -266,7 +266,7 @@ def run_react_loop(initial_intent: str, history: list, max_attempts: int, gui_cl
         if action_type == "finish":
             print("Agent 判断任务已完成！")
             task_completed = True
-            final_result = {"status": "success", "reason": "任务完成", "attempts": loop_count}
+            final_result = {"status": "success", "reason": "任务完成", "attempts": loop_count, "thought": thought}
             if show_img:
                 # 确保在 finish 时获取最新的截图
                 try:

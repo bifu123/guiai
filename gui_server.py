@@ -63,11 +63,7 @@ def api_run_for_agent(req: AgentRequest):
     """
     执行 GUI Agent 任务，根据自然语言意图自动操作桌面。
     """
-    try:
-        request = json.dumps(req, ensure_ascii=False, indent=4)
-        print(request)
-    except:
-        print(type(req), req)
+    print(type(req), req)
 
 
     try:

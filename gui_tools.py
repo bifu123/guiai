@@ -386,14 +386,11 @@ def run_for_agent(user_id:str, intent:str, max_attempts:int=5, gui_client_url:st
         "img": response.get("img") if show_img else None
     }
     
-    # 处理 query 类型（查询/描述屏幕）
-    if response.get("action_type") == "query":
-        result_dict["result"] += f'''屏幕描述：\n{response.get("description", "无法描述屏幕内容")}'''
-        return result_dict
-    
     # 处理 operate 类型（操作型）
     if response.get("status") == "success":
         result_dict["result"] += f'''操作成功：\n结果：{response.get("reason")}'''
+        if response.get("thought"):
+            result_dict["result"] += f'''\nAgent 思考/描述：\n{response.get("thought")}'''
     elif response.get("status") == "failed":
         result_dict["result"] += f'''操作失败：\n结果：{response.get("reason")}'''
         if "当前有其他任务正在执行" in response.get("reason", ""):
