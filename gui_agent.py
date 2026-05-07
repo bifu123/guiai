@@ -53,13 +53,13 @@ def parse_json_response(response_text):
 def build_react_prompt(total_intent, history, agent_history, current_ui_description="", skill_context=""):
     agent_history_str = ""
     if agent_history:
-        agent_history_str = json.dumps(agent_history[-3:], ensure_ascii=False, indent=2)
+        agent_history_str = json.dumps(agent_history[-3:], ensure_ascii=False, indent=4)
     else:
         agent_history_str = "无"
 
     chat_history_str = ""
     if history:
-        chat_history_str = json.dumps(history, ensure_ascii=False, indent=2)
+        chat_history_str = json.dumps(history, ensure_ascii=False, indent=4)
     else:
         chat_history_str = "无"
 

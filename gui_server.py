@@ -65,6 +65,18 @@ def api_run_for_agent(req: AgentRequest):
     """
     print(type(req), req)
 
+    # 处理 history 可能是字符串的情况
+    history_data = req.history
+    if isinstance(history_data, str):
+        try:
+            history_data = json.loads(history_data)
+        except json.JSONDecodeError:
+            try:
+                import ast
+                history_data = ast.literal_eval(history_data)
+            except Exception as e:
+                print(f"解析 history 字符串失败: {e}")
+                history_data = []
 
     try:
         result = run_for_agent(
@@ -73,7 +85,7 @@ def api_run_for_agent(req: AgentRequest):
             max_attempts=req.max_attempts,
             gui_client_url=req.gui_client_url,
             show_img=req.show_img,
-            history=req.history
+            history=history_data
         )
         return result
     except Exception as e:
