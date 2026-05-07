@@ -198,7 +198,7 @@ __总结：__ 作为一个从零手搓的项目，我们目前的架构已经超
 用于点击按钮、切换窗口或聚焦输入框。
 
 ```bash
-curl -X POST http://192.168.2.16:8000/execute \
+curl -X POST http://192.168.66.42:8000/execute \
      -H "Content-Type: application/json" \
      -d '{
            "action": "click",
@@ -211,7 +211,7 @@ curl -X POST http://192.168.2.16:8000/execute \
 用于打开桌面图标或选中整行文本。
 
 ```bash
-curl -X POST http://192.168.2.16:8000/execute \
+curl -X POST http://192.168.66.42:8000/execute \
      -H "Content-Type: application/json" \
      -d '{
            "action": "double_click",
@@ -225,7 +225,7 @@ curl -X POST http://192.168.2.16:8000/execute \
 > **注意：** 如果你在代码中使用了 `pyautogui.write()`，在字符串末尾添加 `\n` 可以直接触发回车。
 
 ```bash
-curl -X POST http://192.168.2.16:8000/execute  \
+curl -X POST http://192.168.66.42:8000/execute  \
      -H "Content-Type: application/json" \
      -d '{
            "action": "type",
@@ -240,7 +240,7 @@ curl -X POST http://192.168.2.16:8000/execute  \
 用于触发 enter、tab、backspace、esc 等非字符按键。
 
 ```bash
-curl -X POST http://192.168.2.16:8000/execute \
+curl -X POST http://192.168.66.42:8000/execute \
      -H "Content-Type: application/json" \
      -d '{
            "action": "key_press",
@@ -252,16 +252,28 @@ curl -X POST http://192.168.2.16:8000/execute \
 #### 5. 滚轮操作 (Scroll)
 用于查看长页面。coords 通常指定滚动发生的中心位置。
 
+**向下滚动示例：**
 ```bash
-curl -X POST http://192.168.2.16:8000/execute \
+curl -X POST http://192.168.66.42:8000/execute \
      -H "Content-Type: application/json" \
      -d '{
            "action": "scroll",
            "coords": [960, 540],
-           "text": "10"
+           "text": "down"
          }'
 ```
-*(注：根据你代码的实现，text 或其他字段可以用来传递滚动距离)*
+
+**向上滚动示例：**
+```bash
+curl -X POST http://192.168.66.42:8000/execute \
+     -H "Content-Type: application/json" \
+     -d '{
+           "action": "scroll",
+           "coords": [1271, 203],
+           "text": "down"
+         }'
+```
+*(注：在当前的实现中，`text` 字段用于传递滚动方向，支持 "down" 或 "up")*
 
 ---
 
@@ -279,7 +291,7 @@ curl -X POST http://192.168.2.16:8000/execute \
 对应的 curl：
 
 ```bash
-curl -X POST http://192.168.2.16:8000/execute \
+curl -X POST http://192.168.66.42:8000/execute \
      -H "Content-Type: application/json" \
      -d '{
            "action": "hotkey",

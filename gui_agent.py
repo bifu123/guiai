@@ -57,11 +57,16 @@ def build_react_prompt(total_intent, history, agent_history, current_ui_descript
     else:
         agent_history_str = "无"
 
-    chat_history_str = ""
-    if history:
-        chat_history_str = json.dumps(history, ensure_ascii=False, indent=4)
-    else:
-        chat_history_str = "无"
+    chat_history_section = ""
+    if history is not None:
+        if isinstance(history, (dict, list)):
+            chat_history_str = json.dumps(history, ensure_ascii=False, indent=4)
+        elif isinstance(history, str):
+            chat_history_str = history
+        else:
+            chat_history_str = str(history)
+            
+        chat_history_section = f"\n【对话历史上下文】:\n{chat_history_str}\n"
 
     skill_section = ""
     if skill_context:
@@ -71,10 +76,7 @@ def build_react_prompt(total_intent, history, agent_history, current_ui_descript
 你是一个能够操作电脑 GUI 的智能助手。你需要通过观察屏幕截图，思考当前状态，并决定下一步动作。
 
 【总目标】: {total_intent}
-{skill_section}
-【对话历史上下文】:
-{chat_history_str}
-
+{skill_section}{chat_history_section}
 【Agent 历史轨迹 (最近3步)】:
 {agent_history_str}
 
