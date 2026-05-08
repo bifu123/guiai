@@ -191,9 +191,8 @@ if __name__ == "__main__":
         exit()
         
     params = {
-        "nickName": "test",
-        "content": "你好"
+        "nickName": "大好",
+        "content": "test"
     }
     
     gui_trask_flow(flow_data=json_file, gui_server_url=gui_server_url, gui_client_url=gui_client_url, params=params)
-

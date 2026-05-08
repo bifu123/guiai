@@ -290,63 +290,64 @@ def execute_manual_flow(
     print("\n========== 开始执行手动流程自动化 ==========")
     last_screenshot = None
     
-    for i, step in enumerate(flow_list):
-        description = step.get("description", f"步骤 {i+1}")
-        auto_data = step.get("auto", {})
-        
-        print(f"[{i+1}/{len(flow_list)}] 正在执行: {description}")
-        
-        # 解析动态参数
-        text_val = auto_data.get("text", "")
-        if text_val and params:
-            # 查找所有 ${var} 格式的占位符
-            matches = re.findall(r'\$\{([^}]+)\}', text_val)
-            for var_name in matches:
-                if var_name in params:
-                    text_val = text_val.replace(f"${{{var_name}}}", str(params[var_name]))
-        
-        # 构造请求 payload
-        payload = {
-            "action": auto_data.get("action", "click"),
-            "coords": auto_data.get("coords", [0, 0]),
-            "text": text_val,
-            "key": auto_data.get("key", ""),
-            "session_id": "manual_flow_session" # 使用固定 session_id 保持连贯性
-        }
-        
-        # 调用执行器
-        res = _call_executor(payload, endpoint)
-        
-        if res.get("status") != "success":
-            error_msg = f"执行失败: {description}。原因: {res.get('message', res.get('reason', '未知错误'))}"
-            print(f"❌ {error_msg}")
-            return {
-                "status": "failed",
-                "error_step": i + 1,
-                "description": description,
-                "reason": error_msg,
-                "screenshot": res.get("screenshot")
+    try:
+        for i, step in enumerate(flow_list):
+            description = step.get("description", f"步骤 {i+1}")
+            auto_data = step.get("auto", {})
+            
+            print(f"[{i+1}/{len(flow_list)}] 正在执行: {description}")
+            
+            # 解析动态参数
+            text_val = auto_data.get("text", "")
+            if text_val and params:
+                # 查找所有 ${var} 格式的占位符
+                matches = re.findall(r'\$\{([^}]+)\}', text_val)
+                for var_name in matches:
+                    if var_name in params:
+                        text_val = text_val.replace(f"${{{var_name}}}", str(params[var_name]))
+            
+            # 构造请求 payload
+            payload = {
+                "action": auto_data.get("action", "click"),
+                "coords": auto_data.get("coords", [0, 0]),
+                "text": text_val,
+                "key": auto_data.get("key", ""),
+                "session_id": "manual_flow_session" # 使用固定 session_id 保持连贯性
             }
             
-        print(f"✅ 成功: {description}")
-        last_screenshot = res.get("screenshot")
+            # 调用执行器
+            res = _call_executor(payload, endpoint)
+            
+            if res.get("status") != "success":
+                error_msg = f"执行失败: {description}。原因: {res.get('message', res.get('reason', '未知错误'))}"
+                print(f"❌ {error_msg}")
+                return {
+                    "status": "failed",
+                    "error_step": i + 1,
+                    "description": description,
+                    "reason": error_msg,
+                    "screenshot": res.get("screenshot")
+                }
+                
+            print(f"✅ 成功: {description}")
+            last_screenshot = res.get("screenshot")
+            
+            # 步骤之间稍微停顿，等待界面响应
+            if i < len(flow_list) - 1:
+                print(f"等待 {time_sleep} 秒...")
+                time.sleep(time_sleep)
+            
+        print("========== 手动流程自动化执行完毕 ==========\n")
         
-        # 步骤之间稍微停顿，等待界面响应
-        if i < len(flow_list) - 1:
-            print(f"等待 {time_sleep} 秒...")
-            time.sleep(time_sleep)
-        
-    print("========== 手动流程自动化执行完毕 ==========\n")
-    
-    # 释放 session 锁
-    _call_executor({"action": "release_lock", "coords": [0, 0], "session_id": "manual_flow_session"}, endpoint)
-    
-    return {
-        "status": "success",
-        "message": "所有步骤执行完毕",
-        "total_steps": len(flow_list),
-        "screenshot": last_screenshot
-    }
+        return {
+            "status": "success",
+            "message": "所有步骤执行完毕",
+            "total_steps": len(flow_list),
+            "screenshot": last_screenshot
+        }
+    finally:
+        # 无论成功还是失败，都必须释放 session 锁
+        _call_executor({"action": "release_lock", "coords": [0, 0], "session_id": "manual_flow_session"}, endpoint)
 
 #----------------------------
 #  agent工具

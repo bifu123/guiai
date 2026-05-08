@@ -154,8 +154,13 @@ def execute_action(req: ActionRequest):
             # 文本输入业务
             if req.coords != [0, 0]:
                 pyautogui.click(x, y) # 先点击定位焦点
-            time.sleep(0.2)
-            pyautogui.write(req.text, interval=0.1)
+            time.sleep(0.5) # 增加等待焦点稳定的时间
+            
+            # 使用 pynput 直接注入 Unicode 字符，完美支持中文，不依赖剪贴板
+            from pynput.keyboard import Controller
+            keyboard = Controller()
+            keyboard.type(req.text)
+            time.sleep(0.2) # 等待输入完成
             
         elif req.action == "key_press":
             # 特殊单键按下 (如 enter, esc, backspace)
