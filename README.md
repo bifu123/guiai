@@ -252,7 +252,7 @@ curl -X POST http://192.168.66.42:8000/execute \
 #### 5. 滚轮操作 (Scroll)
 用于查看长页面。coords 通常指定滚动发生的中心位置。
 
-**向下滚动示例：**
+**基础向下滚动示例 (兼容旧版)：**
 ```bash
 curl -X POST http://192.168.66.42:8000/execute \
      -H "Content-Type: application/json" \
@@ -263,17 +263,30 @@ curl -X POST http://192.168.66.42:8000/execute \
          }'
 ```
 
-**向上滚动示例：**
+**高级滚动示例 (支持方向和距离)：**
 ```bash
 curl -X POST http://192.168.66.42:8000/execute \
      -H "Content-Type: application/json" \
      -d '{
            "action": "scroll",
-           "coords": [1271, 203],
-           "text": "down"
+           "coords": [960, 540],
+           "scroll_dir": "right",
+           "scroll_dist": 800
          }'
 ```
-*(注：在当前的实现中，`text` 字段用于传递滚动方向，支持 "down" 或 "up")*
+
+**直接滚动到底部示例：**
+```bash
+curl -X POST http://192.168.66.42:8000/execute \
+     -H "Content-Type: application/json" \
+     -d '{
+           "action": "scroll",
+           "coords": [960, 540],
+           "scroll_dir": "down",
+           "scroll_dist": 10000
+         }'
+```
+*(注：`scroll_dir` 支持 "down", "up", "left", "right"；`scroll_dist` 默认 500，填极大值如 10000 可实现直接到底/顶)*
 
 ---
 

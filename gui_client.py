@@ -51,6 +51,8 @@ class ActionRequest(BaseModel):
     text: Optional[str] = "" # 输入的内容或查找的元素名称
     key: Optional[str] = ""  # 特殊按键 (Enter, Tab 等)
     session_id: str = ""   # 任务会话 ID，用于独占控制
+    scroll_dir: Optional[str] = None  # 滚动方向: down, up, left, right
+    scroll_dist: Optional[int] = None # 滚动距离: 默认 500，填 10000 表示到底
 
 def capture_screen_base64():
     """捕获当前全屏并转为高质量 Base64 的业务"""
@@ -166,7 +168,21 @@ def execute_action(req: ActionRequest):
             
         elif req.action == "scroll":
             # 滚轮操作业务
-            pyautogui.scroll(-500 if req.text == "down" else 500, x=x, y=y)
+            # 1. 确定方向：优先用 scroll_dir，其次看 text，最后默认 down
+            direction = req.scroll_dir
+            if not direction:
+                direction = req.text if req.text in ["down", "up", "left", "right"] else "down"
+                
+            # 2. 确定距离：优先用 scroll_dist，否则默认 500
+            distance = req.scroll_dist if req.scroll_dist is not None else 500
+            
+            # 3. 执行滚动
+            if direction in ["down", "up"]:
+                clicks = -distance if direction == "down" else distance
+                pyautogui.scroll(clicks, x=x, y=y)
+            elif direction in ["left", "right"]:
+                clicks = -distance if direction == "left" else distance
+                pyautogui.hscroll(clicks, x=x, y=y)
             
         elif req.action == "drag":
             # 拖拽业务
