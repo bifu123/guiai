@@ -185,11 +185,71 @@ if __name__ == "__main__":
     
     #  # 执行JSON文件（带参数）为参数的轨迹重播
     # json_file = input("请输入流程 JSON 文件路径: ").strip()
-    json_file = './flow/notes.json'
-    if not json_file or not os.path.exists(json_file):
-        print(f"❌ 文件不存在: {json_file}")
-        exit()
-        
+    
+    json_file = [
+        {
+            "auto": {
+                "action": "click",
+                "coords": [
+                    426,
+                    266
+                ],
+                "text": "",
+                "key": ""
+            },
+            "description": "点击用户名输入框获得焦点"
+        },
+        {
+            "auto": {
+                "action": "type",
+                "coords": [
+                    0,
+                    0
+                ],
+                "text": "${nickName}",
+                "key": ""
+            },
+            "description": "输入用户名"
+        },
+        {
+            "auto": {
+                "action": "click",
+                "coords": [
+                    422,
+                    328
+                ],
+                "text": "",
+                "key": ""
+            },
+            "description": "输入留言内容"
+        },
+        {
+            "auto": {
+                "action": "type",
+                "coords": [
+                    0,
+                    0
+                ],
+                "text": "${content}",
+                "key": ""
+            },
+            "description": "type content"
+        },
+        {
+            "auto": {
+                "action": "click",
+                "coords": [
+                    623,
+                    424
+                ],
+                "text": "",
+                "key": ""
+            },
+            "description": "提交留言"
+        }
+    ]
+    
+    # 模板参数
     params = {
         "nickName": "大好",
         "content": "test"
