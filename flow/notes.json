@@ -1,0 +1,62 @@
+[
+    {
+        "auto": {
+            "action": "click",
+            "coords": [
+                426,
+                266
+            ],
+            "text": "",
+            "key": ""
+        },
+        "description": "点击用户名输入框获得焦点"
+    },
+    {
+        "auto": {
+            "action": "type",
+            "coords": [
+                0,
+                0
+            ],
+            "text": "${nickName}",
+            "key": ""
+        },
+        "description": "输入用户名"
+    },
+    {
+        "auto": {
+            "action": "click",
+            "coords": [
+                422,
+                328
+            ],
+            "text": "",
+            "key": ""
+        },
+        "description": "输入留言内容"
+    },
+    {
+        "auto": {
+            "action": "type",
+            "coords": [
+                0,
+                0
+            ],
+            "text": "${content}",
+            "key": ""
+        },
+        "description": "type content"
+    },
+    {
+        "auto": {
+            "action": "click",
+            "coords": [
+                623,
+                424
+            ],
+            "text": "",
+            "key": ""
+        },
+        "description": "提交留言"
+    }
+]

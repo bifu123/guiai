@@ -101,48 +101,48 @@ def gui_trask_flow(
     
 
 if __name__ == "__main__":
-    print("\n提示：输入指令后会后台执行，你可以随时输入新指令或输入 /end 终止任务。")
+    # print("\n提示：输入指令后会后台执行，你可以随时输入新指令或输入 /end 终止任务。")
     
-    user_id = "415135222"
-    gui_server_url = os.getenv("GUI_SERVER_URL")
-    gui_client_url = os.getenv("GUI_CLIENT_URL")
-    history = [
-            {
-                "user_id": user_id,
-                "source_id": "815669761",
-                "user": "孙膑",
-                "content": "廉颇将军，您这是在考我算术呢？🤔\n\n1 - 2 = -1，再加上 2，那就是 -1 + 2 = 1 啊！\n\n绕了一圈又回到了原点，正所谓\"江湖路远，终归故里\"啊！⚔️\n",
-                "time": "2026-05-02 14:54:36"
-            },
-            {
-                "user_id": "415135222",
-                "source_id": "815669761",
-                "user": "廉颇",
-                "content": "@孙膑 再加上2呢？",
-                "time": "2026-05-02 14:54:22"
-            },
-            {
-                "user_id": "415135222",
-                "source_id": "815669761",
-                "user": "廉颇",
-                "content": "1-2=？",
-                "time": "2026-05-02 14:53:40"
-            }
-        ]
+    # user_id = "415135222"
+    # gui_server_url = os.getenv("GUI_SERVER_URL")
+    # gui_client_url = os.getenv("GUI_CLIENT_URL")
+    # history = [
+    #         {
+    #             "user_id": user_id,
+    #             "source_id": "815669761",
+    #             "user": "孙膑",
+    #             "content": "廉颇将军，您这是在考我算术呢？🤔\n\n1 - 2 = -1，再加上 2，那就是 -1 + 2 = 1 啊！\n\n绕了一圈又回到了原点，正所谓\"江湖路远，终归故里\"啊！⚔️\n",
+    #             "time": "2026-05-02 14:54:36"
+    #         },
+    #         {
+    #             "user_id": "415135222",
+    #             "source_id": "815669761",
+    #             "user": "廉颇",
+    #             "content": "@孙膑 再加上2呢？",
+    #             "time": "2026-05-02 14:54:22"
+    #         },
+    #         {
+    #             "user_id": "415135222",
+    #             "source_id": "815669761",
+    #             "user": "廉颇",
+    #             "content": "1-2=？",
+    #             "time": "2026-05-02 14:53:40"
+    #         }
+    #     ]
     
-    while True:
-        intent = input("\n请输入你的指令：")
-        if not intent.strip():
-            continue
+    # while True:
+    #     intent = input("\n请输入你的指令：")
+    #     if not intent.strip():
+    #         continue
             
-        thread = threading.Thread(target=gui_trask_invoke, args=(intent, user_id, gui_server_url, gui_client_url, history))
-        thread.daemon = True
-        thread.start()
+    #     thread = threading.Thread(target=gui_trask_invoke, args=(intent, user_id, gui_server_url, gui_client_url, history))
+    #     thread.daemon = True
+    #     thread.start()
     
 
 
-    # gui_server_url = "http://192.168.66.41:8001/api/execute_manual_flow"
-    # gui_client_url = "http://192.168.66.42:8000/execute"
+    gui_server_url = "http://192.168.66.41:8001/api/execute_manual_flow"
+    gui_client_url = "http://192.168.66.42:8000/execute"
     
     # # 执行JSON参数的轨迹重播
     # test_flow = [
@@ -185,14 +185,15 @@ if __name__ == "__main__":
     
     #  # 执行JSON文件（带参数）为参数的轨迹重播
     # json_file = input("请输入流程 JSON 文件路径: ").strip()
-    # if not json_file or not os.path.exists(json_file):
-    #     print(f"❌ 文件不存在: {json_file}")
-    #     exit()
+    json_file = './flow/notes.json'
+    if not json_file or not os.path.exists(json_file):
+        print(f"❌ 文件不存在: {json_file}")
+        exit()
         
-    # params = {
-    #     "username": "root",
-    #     "password": "shift962512"
-    # }
+    params = {
+        "nickName": "test",
+        "content": "你好"
+    }
     
-    # gui_trask_flow(flow_data=json_file, gui_server_url=gui_server_url, gui_client_url=gui_client_url, params=params)
+    gui_trask_flow(flow_data=json_file, gui_server_url=gui_server_url, gui_client_url=gui_client_url, params=params)
 

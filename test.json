@@ -1,0 +1,38 @@
+[
+    {
+        "auto": {
+            "action": "double_click",
+            "coords": [
+                50,
+                143
+            ],
+            "text": "",
+            "key": ""
+        },
+        "description": "open this pc"
+    },
+    {
+        "auto": {
+            "action": "double_click",
+            "coords": [
+                751,
+                459
+            ],
+            "text": "",
+            "key": ""
+        },
+        "description": "open d"
+    },
+    {
+        "auto": {
+            "action": "double_click",
+            "coords": [
+                822,
+                351
+            ],
+            "text": "",
+            "key": ""
+        },
+        "description": "open girl"
+    }
+]
