@@ -448,6 +448,22 @@ def run_react_loop(initial_intent: str, history: list, max_attempts: int, gui_cl
     if not task_completed:
         redis_manager.set_task_status(session_id, "failed")
         
+    # 统一兜底处理截图：确保最终返回结果中包含截图（如果 show_img 为 True）
+    if show_img and "img" not in final_result:
+        try:
+            print("正在获取最终兜底截图...")
+            final_res = requests.post(gui_client_url, json={
+                "action": "screenshot",
+                "coords": [0, 0],
+                "session_id": session_id
+            }, timeout=5).json()
+            final_result["img"] = final_res.get("screenshot", current_screenshot)
+        except Exception as e:
+            print(f"获取最终兜底截图失败: {e}")
+            # 如果请求失败，使用循环中最后一次成功获取的截图
+            if 'current_screenshot' in locals():
+                final_result["img"] = current_screenshot
+                
     return final_result
 
 import uuid
