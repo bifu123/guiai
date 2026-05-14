@@ -170,6 +170,10 @@ def execute_action(req: ActionRequest):
             # 坐标点击业务
             run_adb(f"input tap {x} {y}")
             
+        elif req.action == "long_press":
+            # 长按业务 (通过滑动极小距离并设置较长时长实现)
+            run_adb(f"input swipe {x} {y} {x} {y} 1000")
+            
         elif req.action == "double_click":
             # 双击业务
             run_adb(f"input tap {x} {y}")
@@ -182,6 +186,18 @@ def execute_action(req: ActionRequest):
                 run_adb(f"input tap {x} {y}")
             time.sleep(0.5)
             # 注意：原生 ADB 输入中文可能存在乱码，如需稳定中文支持可后续引入 ADBKeyBoard
+            escaped_text = req.text.replace(' ', '%s')
+            run_adb(f"input text '{escaped_text}'")
+            
+        elif req.action == "clear_and_type":
+            # 清空并输入业务
+            if req.coords != [0, 0]:
+                run_adb(f"input tap {x} {y}")
+            time.sleep(0.5)
+            # 尝试通过发送多次退格键清空内容 (假设最多50个字符)
+            for _ in range(50):
+                run_adb("input keyevent 67", wait=False)
+            time.sleep(1.0)
             escaped_text = req.text.replace(' ', '%s')
             run_adb(f"input text '{escaped_text}'")
             

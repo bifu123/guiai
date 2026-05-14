@@ -353,7 +353,7 @@ def execute_manual_flow(
 #----------------------------
 #  agent工具
 #----------------------------
-def run_for_agent(user_id:str, intent:str, max_attempts:int=5, gui_client_url:str=os.getenv("GUI_CLIENT_URL"), show_img:bool=False, history:list=None) -> Dict[str, Any]:
+def run_for_agent(user_id:str, intent:str, max_attempts:int=5, gui_client_url:str=os.getenv("GUI_CLIENT_URL"), show_img:bool=False, history:list=None, device_type:str="pc") -> Dict[str, Any]:
     """
     执行 GUI Agent 任务，根据自然语言意图自动操作桌面。
 
@@ -364,6 +364,7 @@ def run_for_agent(user_id:str, intent:str, max_attempts:int=5, gui_client_url:st
         gui_client_url (str, optional): GUI 执行器的 URL 地址。默认为 os.getenv("GUI_CLIENT_URL")。
         show_img (bool, optional): 是否在成功时返回截图 base64。默认为 False。
         history (list, optional): 聊天对话历史，用于上下文推断。默认为 None。
+        device_type (str, optional): 目标设备类型，"pc" 或 "android"。默认为 "pc"。
 
     Returns:
         Dict[str, Any]: 包含操作结果、坐标、尝试次数和截图的字典。
@@ -377,7 +378,8 @@ def run_for_agent(user_id:str, intent:str, max_attempts:int=5, gui_client_url:st
         history=history, 
         max_attempts=max_attempts, 
         gui_client_url=gui_client_url, 
-        show_img=show_img
+        show_img=show_img,
+        device_type=device_type
     )
     
     # 构造返回的字典结构

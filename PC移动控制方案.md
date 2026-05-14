@@ -57,20 +57,26 @@
 3.  **Client 执行层**：
     *   **关键要求**：`gui_client_android.py` 必须实现与 `gui_client.py` **完全一致的 API 接口规范**。即接收相同的 `ActionRequest` JSON 结构，并返回包含 `screenshot` (Base64) 的 JSON 响应。
 
-### 方案 B：引入 `device_type` 字段进行智能路由
+### 方案 B：引入 `device_type` 字段进行智能路由与 Prompt 动态适配 (最终采用方案)
 
-这种方案对最终用户更友好，用户不需要记住具体的 IP 和端口。
+这种方案对最终用户更友好，用户不需要记住具体的 IP 和端口，同时解决了 PC 和移动端交互逻辑差异导致的“幻觉”问题。
 
-1.  **修改请求模型 (`gui_server.py`)**：
-    *   在 `AgentRequest` 中增加 `device_type: str = "pc"` (可选 "pc" 或 "android")。
-2.  **配置管理**：
+1.  **配置管理 (`.env`)**：
     *   在 `.env` 文件中配置不同设备的默认 URL：
         ```env
-        GUI_CLIENT_URL_PC=http://192.168.x.x:8000/execute
-        GUI_CLIENT_URL_ANDROID=http://192.168.y.y:8002/execute
+        GUI_CLIENT_URL=http://192.168.x.x:8000/execute          # 默认 PC 端
+        GUI_CLIENT_URL_ANDROID=http://192.168.y.y:8002/execute  # Android 端
         ```
-3.  **智能路由 (`gui_server.py`)**：
-    *   在 `api_run_for_agent` 函数中，根据传入的 `device_type`，从环境变量中读取对应的 URL，并将其作为 `gui_client_url` 传递给 `gui_agent.py`。
+
+2.  **智能路由 (`gui_server.py`)**：
+    *   在 `AgentRequest` 中增加 `device_type: str = "pc"` (可选 "pc" 或 "android")，并将 `gui_client_url` 设为可选。
+    *   在 `api_run_for_agent` 函数中，如果用户未显式传入 `gui_client_url`，则根据 `device_type` 从环境变量中读取对应的 URL。
+
+3.  **Prompt 动态适配 (`gui_prompt.py` & `gui_agent.py`)**：
+    *   **痛点**：PC 和移动端的动作空间（如双击 vs 单击、快捷键 vs 滑动）和常识规则不同。如果共用一套 Prompt，VLM 容易产生幻觉（例如在手机上尝试双击或按 Alt+F4）。
+    *   **解决**：将原 `gui_agent.py` 中的 `build_react_prompt` 逻辑抽离到独立的 `gui_prompt.py` 文件中。
+    *   **实现**：`gui_prompt.py` 接收 `device_type` 参数，动态组装【执行职责】和【动作类型】。例如，当 `device_type="android"` 时，Prompt 中会强调使用 `tap`, `swipe`, `system_key` 等移动端专属动作。
+    *   **透传**：`device_type` 参数从 `gui_server.py` 一路透传给 `gui_tools.py`，最终到达 `gui_agent.py`，实现自顶向下的设备感知。
 
 ---
 

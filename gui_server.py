@@ -37,8 +37,9 @@ class ManualFlowRequest(BaseModel):
 class AgentRequest(BaseModel):
     user_id: str
     intent: str
+    device_type: str = "pc"  # 新增设备类型，默认为 pc
     max_attempts: int = 5
-    gui_client_url: str = os.getenv("GUI_CLIENT_URL")
+    gui_client_url: Optional[str] = None  # 改为可选，由路由逻辑决定
     show_img: bool = True
     history: Union[List[Dict], str] = None
 
@@ -65,14 +66,26 @@ def api_run_for_agent(req: AgentRequest):
     """
     print(type(req), req)
 
+    # 智能路由逻辑
+    target_url = req.gui_client_url
+    if not target_url:
+        if req.device_type.lower() == "android":
+            target_url = os.getenv("GUI_CLIENT_URL_ANDROID")
+        else:
+            target_url = os.getenv("GUI_CLIENT_URL")
+            
+    if not target_url:
+        raise HTTPException(status_code=500, detail=f"未配置 {req.device_type} 的客户端 URL，请检查 .env 文件")
+
     try:
         result = run_for_agent(
             user_id=req.user_id,
             intent=req.intent,
             max_attempts=req.max_attempts,
-            gui_client_url=req.gui_client_url,
+            gui_client_url=target_url,
             show_img=req.show_img,
-            history=req.history
+            history=req.history,
+            device_type=req.device_type
         )
         return result
     except Exception as e:
