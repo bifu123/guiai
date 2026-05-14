@@ -18,8 +18,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 gui_client_url = os.getenv("GUI_CLIENT_URL")
-# ocr_detector = QwenDetector()
-ocr_detector = BaiduDetector()
+ocr_detector = QwenDetector()
+# ocr_detector = BaiduDetector()
 
 # 从模型响应中提取并解析JSON
 def parse_json_response(response_text):
