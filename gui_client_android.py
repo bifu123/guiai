@@ -44,14 +44,25 @@ class ActionRequest(BaseModel):
     scroll_dist: Optional[int] = None # 滚动距离
 
 # --- 底层驱动调用业务 ---
-def run_adb(cmd: str, wait: bool = True):
+def run_adb(cmd: str, wait: bool = True, timeout: int = 10):
     """执行 adb shell 命令的底层职责"""
     full_cmd = f"adb shell {cmd}"
     if wait:
-        result = subprocess.run(full_cmd.split(), capture_output=True, text=True)
-        return result.stdout.strip()
+        try:
+            # 使用 shell=True 并在出错时打印 stderr
+            result = subprocess.run(full_cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+            if result.returncode != 0:
+                print(f"ADB 命令执行失败: {full_cmd}")
+                print(f"错误输出: {result.stderr.strip()}")
+            return result.stdout.strip()
+        except subprocess.TimeoutExpired:
+            print(f"ADB 命令执行超时 ({timeout}s): {full_cmd}")
+            return ""
+        except Exception as e:
+            print(f"ADB 命令执行异常: {e}")
+            return ""
     else:
-        subprocess.Popen(full_cmd.split())
+        subprocess.Popen(full_cmd, shell=True)
         return ""
 
 def capture_screen_base64():
@@ -243,6 +254,17 @@ def execute_action(req: ActionRequest):
             elif req.text == "power":
                 run_adb("input keyevent 26") # 电源键
                 time.sleep(1.0) # 电源键唤醒屏幕需要额外时间
+            elif req.text == "unlock":
+                # 向上滑动解锁 (从屏幕中下部滑到中上部)
+                run_adb("input swipe 500 1500 500 200 300")
+                time.sleep(0.5)
+            elif req.text == "wake_and_unlock":
+                # 唤醒并解锁组合指令，防止唤醒后 Agent 思考时间过长导致再次息屏
+                # 使用 224 (KEYCODE_WAKEUP) 绝对唤醒，防止屏幕已亮时误关屏幕
+                run_adb("input keyevent 224") 
+                time.sleep(1.0) # 等待屏幕亮起
+                run_adb("input swipe 500 1500 500 200 300") # 向上滑动解锁
+                time.sleep(0.5)
             elif req.text == "volume_up":
                 run_adb("input keyevent 24") # 音量加
             elif req.text == "volume_down":

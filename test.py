@@ -8,12 +8,12 @@ load_dotenv()
 # 默认使用环境变量中的 URL，如果没有则使用默认值
 GUI_CLIENT_URL = os.getenv("GUI_CLIENT_URL_ANDROID", "http://192.168.66.40:8000/execute")
 
-def test_window_control(command):
-    print(f"\n[{time.strftime('%H:%M:%S')}] 正在测试指令: {command} ...")
+def test_action(action, text):
+    print(f"\n[{time.strftime('%H:%M:%S')}] 正在测试指令: {action} -> {text} ...")
     payload = {
-        "action": "window_control",
+        "action": action,
         "coords": [0, 0],
-        "text": command,
+        "text": text,
         "session_id": "test_session_001"
     }
     
@@ -34,15 +34,19 @@ def test_window_control(command):
 
 if __name__ == "__main__":
     commands = [
-        "home",
-        "back",
-        "recents",
-        "power",
-        "volume_up",
-        "volume_down",
-        "mute",
-        "expand_notifications",
-        "collapse_notifications"
+        ("window_control", "home"),
+        ("window_control", "back"),
+        ("window_control", "recents"),
+        ("window_control", "power"),
+        ("window_control", "unlock"),
+        ("window_control", "wake_and_unlock"),
+        ("window_control", "volume_up"),
+        ("window_control", "volume_down"),
+        ("window_control", "mute"),
+        ("window_control", "expand_notifications"),
+        ("window_control", "collapse_notifications"),
+        ("call", "10086"),
+        ("send_sms", "10086:测试短信")
     ]
     
     print("========================================")
@@ -50,8 +54,8 @@ if __name__ == "__main__":
     print(f"🔗 目标服务器: {GUI_CLIENT_URL}")
     print("========================================")
     print("可用的测试指令:")
-    for i, cmd in enumerate(commands):
-        print(f"{i+1}. {cmd}")
+    for i, (action, text) in enumerate(commands):
+        print(f"{i+1}. [{action}] {text}")
     print("0. 退出")
     print("a. 测试所有指令 (每个间隔3秒)")
     print("========================================")
@@ -62,14 +66,15 @@ if __name__ == "__main__":
             print("退出测试。")
             break
         elif choice == 'a':
-            for cmd in commands:
-                test_window_control(cmd)
+            for action, text in commands:
+                test_action(action, text)
                 time.sleep(3)
         else:
             try:
                 idx = int(choice) - 1
                 if 0 <= idx < len(commands):
-                    test_window_control(commands[idx])
+                    action, text = commands[idx]
+                    test_action(action, text)
                 else:
                     print("⚠️ 无效的编号，请重新输入。")
             except ValueError:
