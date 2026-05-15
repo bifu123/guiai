@@ -35,7 +35,7 @@ os.system(f"adb shell mkdir -p {TEMP_DIR}")
 
 # 定义标准数据结构业务
 class ActionRequest(BaseModel):
-    action: str            # 动作类型: click, double_click, type, scroll, key_press, hotkey, screenshot, release_lock, find_element, drag, window_control
+    action: str            # 动作类型: click, double_click, type, scroll, key_press, hotkey, screenshot, release_lock, find_element, drag, window_control, call
     coords: List[int]      # 物理像素坐标: [x, y]
     text: Optional[str] = "" # 输入的内容或查找的元素名称
     key: Optional[str] = ""  # 特殊按键
@@ -196,7 +196,7 @@ def execute_action(req: ActionRequest):
             time.sleep(0.5)
             # 尝试通过发送多次退格键清空内容 (假设最多50个字符)
             for _ in range(50):
-                run_adb("input keyevent 67", wait=False)
+                run_adb("input keyevent 67", timeout=1)
             time.sleep(1.0)
             escaped_text = req.text.replace(' ', '%s')
             run_adb(f"input text '{escaped_text}'")
@@ -240,6 +240,41 @@ def execute_action(req: ActionRequest):
                 run_adb("input keyevent 4") # BACK 键
             elif req.text == "recents":
                 run_adb("input keyevent 187") # 任务列表
+            elif req.text == "power":
+                run_adb("input keyevent 26") # 电源键
+                time.sleep(1.0) # 电源键唤醒屏幕需要额外时间
+            elif req.text == "volume_up":
+                run_adb("input keyevent 24") # 音量加
+            elif req.text == "volume_down":
+                run_adb("input keyevent 25") # 音量减
+            elif req.text == "mute":
+                run_adb("input keyevent 164") # 静音
+            elif req.text == "expand_notifications":
+                run_adb("cmd statusbar expand-notifications") # 展开通知栏
+            elif req.text == "collapse_notifications":
+                run_adb("cmd statusbar collapse") # 收起通知栏
+
+        elif req.action == "call":
+            # 拨打电话业务
+            if req.text:
+                # 使用 am start 拨打电话，需要确保手机已授予相关权限或在解锁状态下
+                run_adb(f"am start -a android.intent.action.CALL -d tel:{req.text}")
+
+        elif req.action == "send_sms":
+            # 发送短信职责：自动填充收件人和内容
+            # req.text 格式建议为 "手机号:短信内容"
+            if ":" in req.text:
+                phone_number, message = req.text.split(":", 1)
+                # 使用 am start 调起短信界面并填充内容
+                # 注意：为了安全，通常只填充不直接后台发送（免得 Agent 误操作）
+                # 如需后台静默发送，需要调用特定的 Service 或具备更高权限的 Shell 脚本
+                cmd = f"am start -a android.intent.action.SENDTO -d sms:{phone_number} --es sms_body '{message}' --ez exit_on_sent true"
+                run_adb(cmd)
+                # 模拟按下发送键（部分系统需要此步，可选）
+                time.sleep(1.5)
+                run_adb("input keyevent 22") # 切换焦点到发送按钮（通用适配需微调）
+                run_adb("input keyevent 66") # Enter 键确认发送
+
 
         # --- 动作完成后统一回传最新系统状态 ---
         time.sleep(1.0) # 等待界面动画渲染完成

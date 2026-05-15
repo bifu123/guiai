@@ -18,3 +18,24 @@ description: 当用户意图包含对Android手机进行系统级控制（如回
 - **查看最近任务 (Recents)**：
   当需要打开多任务/最近应用列表时，请调用 `window_control` 动作，并将 `text` 参数设置为 `recents`。
   *(底层实现：`adb shell input keyevent 187`)*
+
+- **电源键 (Power)**：
+  当需要点亮或熄灭屏幕时，请调用 `window_control` 动作，并将 `text` 参数设置为 `power`。
+  *(底层实现：`adb shell input keyevent 26`)*
+
+- **音量控制 (Volume)**：
+  - 增加音量：调用 `window_control` 动作，`text` 参数设置为 `volume_up`。*(底层实现：`adb shell input keyevent 24`)*
+  - 减小音量：调用 `window_control` 动作，`text` 参数设置为 `volume_down`。*(底层实现：`adb shell input keyevent 25`)*
+  - 静音：调用 `window_control` 动作，`text` 参数设置为 `mute`。*(底层实现：`adb shell input keyevent 164`)*
+
+- **通知栏控制 (Notifications)**：
+  - 展开通知栏：调用 `window_control` 动作，`text` 参数设置为 `expand_notifications`。*(底层实现：`adb shell cmd statusbar expand-notifications`)*
+  - 收起通知栏：调用 `window_control` 动作，`text` 参数设置为 `collapse_notifications`。*(底层实现：`adb shell cmd statusbar collapse`)*
+
+## 拨打电话指令
+
+当用户意图包含拨打电话时，请使用专门的 `call` 动作：
+
+- **拨打电话**：
+  调用 `call` 动作，并将 `text` 参数设置为需要拨打的电话号码（例如 `10086`）。
+  *(底层实现：`adb shell am start -a android.intent.action.CALL -d tel:<电话号码>`)*
