@@ -1,10 +1,16 @@
 import redis
 import json
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class RedisContextManager:
-    def __init__(self, host='192.168.66.24', port=6379, db=13):
-        self.redis_client = redis.Redis(host=host, port=port, db=db, decode_responses=True)
+    def __init__(self, host=None, port=None, db=None):
+        self.host = host or os.getenv("REDIS_HOST", "127.0.0.1")
+        self.port = port or int(os.getenv("REDIS_PORT", 6379))
+        self.db = db or int(os.getenv("REDIS_DB", 13))
+        self.redis_client = redis.Redis(host=self.host, port=self.port, db=self.db, decode_responses=True)
         
     def set_task_status(self, session_id, status):
         self.redis_client.set(f"task:{session_id}:status", status)
