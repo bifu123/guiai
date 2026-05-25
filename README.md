@@ -2,6 +2,15 @@
 
 目前业界的 GUI Agent 主要分为三大流派，而我们目前的架构实际上是__集大成者的混合架构（Hybrid Architecture）__。
 
+## 📚 文档导航 (Documentation)
+
+- [如何安装配置](./docs/如何安装配置.md) - 从零开始的环境搭建与启动指南
+- [怎样更换视觉模型和OCR模型](./怎样更换视觉模型和OCR模型.md) - 详细说明如何切换或添加新的大模型
+- [录制说明](./录制说明.md) - 如何使用 `gui_recorder.py` 录制标准 RPA 流程
+- [人在回路 (Human-in-the-loop)](./人在回路.md) - 了解 Agent 如何在遇到困难时请求人类协助
+- [PC移动控制方案](./PC移动控制方案.md) - 关于如何控制 Android 设备的说明
+- [ReAct 架构说明](./ReAct.md) - 深入了解 Agent 的动态规划与自愈机制
+
 ### 1. 核心竞争力与业界对比 (Core Competitiveness vs. Industry)
 
 结合 **ReAct 动态规划**、**Redis 状态管理**、**人在回路 (Human-in-the-loop)** 以及 **C/S 分布式架构**，本项目已经从一个“高级自动化脚本”正式蜕变为一个**企业级 AI-RPA 平台**。
