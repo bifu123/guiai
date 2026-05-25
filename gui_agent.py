@@ -4,7 +4,7 @@ import time
 import requests
 import json
 
-from gui_vl import glm_4_6v_flash
+from gui_vl import vlm
 from ocr_service import QwenDetector, BaiduDetector
 from ocr_openrouter import OpenRouterDetector
 from gui_parser import parse_intent
@@ -97,7 +97,7 @@ def verify_task_success(screenshot_base64, user_intent):
     "reason": "判断失败的理由"
 }}
 """
-    response_text = glm_4_6v_flash(prompt, screenshot_base64)
+    response_text = vlm(prompt, screenshot_base64)
     print(f"[DEBUG] 验证原始响应: {response_text}")
     return parse_json_response(response_text)
 
@@ -173,7 +173,7 @@ def run_react_loop(initial_intent: str, history: list, max_attempts: int, gui_cl
         # 2. 思考与动作 (Thought & Action)
         prompt = get_system_prompt(current_intent, history, agent_history, skill_context=skill_context, device_type=device_type)
         try:
-            response_text = glm_4_6v_flash(prompt, current_screenshot)
+            response_text = vlm(prompt, current_screenshot)
             print(f"[DEBUG] ReAct 原始响应:\n{response_text}")
             thought, action = parse_thought_and_action(response_text)
             print(f"Thought: {thought}")
@@ -351,7 +351,7 @@ def run_react_loop(initial_intent: str, history: list, max_attempts: int, gui_cl
     "reason": "判断失败的理由"
 }}
 """
-            verification_text = glm_4_6v_flash(verify_prompt, verify_screenshot)
+            verification_text = vlm(verify_prompt, verify_screenshot)
             print(f"[DEBUG] 验证原始响应: {verification_text}")
             verification = parse_json_response(verification_text)
             

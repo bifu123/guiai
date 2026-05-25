@@ -73,24 +73,26 @@ __🏆 领先业界的亮点（我们的护城河）：__
        │ (加载专属技能 gui_skills.py)
        │ (调用视觉模型 gui_vl.py)
        │ (调用坐标定位 ocr_service.py)
-       │ (调用底层动作 gui_tools.py)
+       │ (调用底层动作 gui_tools.py / gui_tools_android.py)
        ▼
 [负载均衡器 / 路由] (未来规划)
        │
-   ┌───┼───┐
-   ▼   ▼   ▼
-[PC1] [PC2] [PCN] (运行 gui_main.exe（gui_client.py） 的物理机/虚拟机)
+   ┌───┴───┬───────────────┐
+   ▼       ▼               ▼
+[PC1]    [PCN]          [Phone1]
+(Windows/Mac/Linux)     (Android 手机)
+运行 gui_client.py      运行 gui_client_android.py
 ```
 
 #### 核心模块功能说明：
 *   **`gui_server.py` (API 网关)**：提供 HTTP 接口（如 `/api/run_for_agent`），接收外部请求，解析参数并转发给 Agent。
 *   **`gui_agent.py` (Agent 大脑)**：系统的核心控制中枢。实现 ReAct 循环，负责任务规划、状态管理、调用 VLM/OCR 进行决策，并处理“人在回路”等复杂逻辑。
-*   **`gui_tools.py` (工具层)**：封装了供 Agent 调用的各种底层操作（如 `mouse_click`, `type_text`）以及标准流程回放功能（`execute_manual_flow`）。
+*   **`gui_tools.py` / `gui_tools_android.py` (工具层)**：封装了供 Agent 调用的各种底层操作（如 PC 端的 `mouse_click`, `type_text`，以及 Android 端的 `window_control` 等）以及标准流程回放功能。
 *   **`gui_redis.py` (状态管理层)**：封装了与 Redis 的交互，用于存储会话状态（防并发）、历史轨迹（供模型参考）和坐标缓存（加速执行）。
 *   **`gui_skills.py` (技能管理层)**：负责根据用户意图匹配并加载专属的技能指导（Prompt），让 Agent 在特定场景下表现更专业。
 *   **`gui_vl.py` (视觉大模型接口)**：封装了与 GLM-4V 等视觉大模型的交互，负责“观察”截图并输出“思考与动作”。
 *   **`ocr_service.py` (坐标定位服务)**：负责屏幕元素的精准坐标定位，作为 VLM 的轻量级、高精度补充。
-*   **`gui_main.py` / `gui_client.py` (客户端执行器)**：部署在目标机器上的“手”和“眼”，负责执行具体的鼠标/键盘动作并返回实时截图。
+*   **`gui_main.py` / `gui_client.py` / `gui_client_android.py` (客户端执行器)**：部署在目标机器（PC 或 Android 手机）上的“手”和“眼”，负责执行具体的鼠标/键盘/触控动作并返回实时截图。
 
 ### 4. 核心执行逻辑 (ReAct 循环)
 
