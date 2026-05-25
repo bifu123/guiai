@@ -211,9 +211,11 @@ class QwenDetector:
 
 class BaiduTextAnchorService:
     """基于百度OCR的精准文字定位服务，提供与 QwenDetector 相同的接口"""
-    def __init__(self, client_id='nc5WIHMwSorB469QbREyf8ZY', client_secret='ANPo5ZYGed4VK94k4qSuuqk9VXhtVgLd'):
-        self.client_id = client_id
-        self.client_secret = client_secret
+    def __init__(self, client_id=None, client_secret=None):
+        self.client_id = client_id or os.getenv("BAIDU_OCR_CLIENT_ID")
+        self.client_secret = client_secret or os.getenv("BAIDU_OCR_CLIENT_SECRET")
+        if not self.client_id or not self.client_secret:
+            print("警告: 未找到 BAIDU_OCR_CLIENT_ID 或 BAIDU_OCR_CLIENT_SECRET 环境变量，请在 .env 文件中配置")
         self.request_url = "https://aip.baidubce.com/rest/2.0/ocr/v1/accurate"
         self.access_token = self._get_token()
 

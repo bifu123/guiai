@@ -99,7 +99,8 @@ def process_image_for_ollama(image_base64, max_width=1280, max_height=800):
         return image_base64 # 如果处理失败，返回原始数据尝试
 
 def ollama_qwen3_vl(text, image_base64=None):
-    client = ollama.Client(host='http://192.168.68.28:11434')
+    ollama_host = os.getenv("OLLAMA_HOST", "http://192.168.68.28:11434")
+    client = ollama.Client(host=ollama_host)
     
     # 如果传入了 base64，则进行预处理；否则直接传递文件路径（与 test.py 保持一致）
     if image_base64:
