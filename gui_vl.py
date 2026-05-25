@@ -58,32 +58,42 @@ def glm_4_6v_flash(text, image_base64=None):
 from io import BytesIO
 from PIL import Image
 
-def process_image_for_ollama(image_base64):
-    """处理图片：去除前缀，并限制最大分辨率以防止 OOM"""
+def process_image_for_ollama(image_base64, max_width=1280, max_height=800):
+    """处理图片：去除前缀，限制最大分辨率，并保持 PNG 格式以防止模型解析卡死"""
     # 1. 去除可能存在的 data:image/...;base64, 前缀
     if image_base64.startswith('data:image'):
         image_base64 = image_base64.split(',', 1)[1]
         
     try:
-        # 2. 解码并检查尺寸
+        # 2. 解码图片
         img_data = base64.b64decode(image_base64)
         img = Image.open(BytesIO(img_data))
         
-        # 限制最大宽度或高度，例如 1920
-        max_size = 1920
-        if img.width > max_size or img.height > max_size:
-            # 等比例缩放
-            img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+        orig_size = img.size
+        orig_mode = img.mode
+        
+        # 拦截无效的极小图片 (例如 1x1 占位图)，防止 Ollama 模型崩溃
+        if img.width < 10 or img.height < 10:
+            raise ValueError(f"图片尺寸过小 ({img.width}x{img.height})，已被拦截以防止模型崩溃")
+        
+        # 3. 限制最大宽度或高度 (1280x800)
+        if img.width > max_width or img.height > max_height:
+            # 计算缩放比例，保持宽高比
+            ratio = min(max_width / img.width, max_height / img.height)
+            new_size = (int(img.width * ratio), int(img.height * ratio))
+            img = img.resize(new_size, Image.Resampling.LANCZOS)
             
-            # 重新编码为 base64
-            buffered = BytesIO()
-            # 如果是 RGBA 转换为 RGB
-            if img.mode in ('RGBA', 'P'):
-                img = img.convert('RGB')
-            img.save(buffered, format="JPEG", quality=85)
-            return base64.b64encode(buffered.getvalue()).decode('utf-8')
-            
-        return image_base64
+        # 4. 重新编码为 PNG base64 (保持 PNG 格式，避免 JPEG 导致的卡死)
+        buffered = BytesIO()
+        img.save(buffered, format="PNG")
+        new_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+        
+        print(f"[VL Image Process] 原始尺寸: {orig_size}, 模式: {orig_mode} -> 新尺寸: {img.size}, 格式: PNG")
+        return new_base64
+        
+    except ValueError as ve:
+        # 向上抛出 ValueError，让调用方知道这是被主动拦截的
+        raise ve
     except Exception as e:
         print(f"图片预处理失败: {e}")
         return image_base64 # 如果处理失败，返回原始数据尝试
@@ -91,16 +101,17 @@ def process_image_for_ollama(image_base64):
 def ollama_qwen3_vl(text, image_base64=None):
     client = ollama.Client(host='http://192.168.68.28:11434')
     
-    # 如果传入了 base64 则直接使用，否则读取 test.png
-    raw_img_data = image_base64 if image_base64 else encode_image("test.png")
-    
-    # 预处理图片
-    img_data = process_image_for_ollama(raw_img_data)
+    # 如果传入了 base64，则进行预处理；否则直接传递文件路径（与 test.py 保持一致）
+    if image_base64:
+        img_data = process_image_for_ollama(image_base64)
+        images_param = [img_data]
+    else:
+        images_param = ['./test.png']
     
     messages = [{
         'role': 'user',
         'content': text,
-        'images': [img_data]
+        'images': images_param
     }]
     
     max_retries = 10
