@@ -5,7 +5,7 @@ import requests
 import json
 
 from gui_vl import vlm
-from ocr_service import QwenDetector, BaiduDetector
+from gui_ocr import ocr
 from ocr_openrouter import OpenRouterDetector
 from gui_parser import parse_intent
 from gui_redis import redis_manager
@@ -18,8 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 gui_client_url = os.getenv("GUI_CLIENT_URL")
-ocr_detector = QwenDetector()
-# ocr_detector = BaiduDetector()
+ocr_detector = ocr
 
 # 从模型响应中提取并解析JSON
 def parse_json_response(response_text):
@@ -264,7 +263,7 @@ def run_react_loop(initial_intent: str, history: list, max_attempts: int, gui_cl
                 
                 if not coords:
                     # 尝试 OCR 定位
-                    print(f"正在使用 QwenDetector 定位目标: {target_name} ...")
+                    print(f"正在使用 OCR 定位目标: {target_name} ...")
                     coords_result = ocr_detector.get_target_coords(current_screenshot, target_name)
                     if coords_result:
                         coords = [coords_result["x"], coords_result["y"]]
