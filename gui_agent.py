@@ -525,7 +525,7 @@ if __name__ == "__main__":
     # 保持你的 API Key 不变
     user_id = input("请输入测试用户ID (默认 test_user_001): ") or "test_user_001"
     intent = input("请输出你的指令：")
-    gui_client_url = input("请输入目标接口 (默认 http://192.168.68.15:8000/execute): ") or os.getenv("GUI_CLIENT_URL")
+    gui_client_url = input("请输入目标接口 (默认 http://192.168.66.42:8000/execute): ") or os.getenv("GUI_CLIENT_URL")
     
     mock_history = []
     
