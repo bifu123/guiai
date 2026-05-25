@@ -1,7 +1,7 @@
 import os
 import yaml
 import json
-from gui_vl import glm_4_6v_flash
+from gui_vl import vlm
 
 class SkillManager:
     def __init__(self, skills_dir="./skills"):
@@ -76,14 +76,14 @@ class SkillManager:
 """
         try:
             # We use the text-only capability of the VLM or just pass a dummy image if required by the API.
-            # Assuming glm_4_6v_flash can handle text-only if image is empty or we pass a 1x1 pixel.
-            # Let's check how glm_4_6v_flash is implemented. It usually requires an image.
+            # Assuming vlm can handle text-only if image is empty or we pass a 1x1 pixel.
+            # Let's check how vlm is implemented. It usually requires an image.
             # For simplicity, we can just use the same function with a dummy image or if it supports text only.
             # Wait, we can just use a text LLM for this, but to avoid adding new dependencies, 
-            # let's see if we can use glm_4_6v_flash with a blank image.
+            # let's see if we can use vlm with a blank image.
             # Actually, let's just use the text model if available, or pass a dummy base64 image.
             dummy_image = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
-            response_text = glm_4_6v_flash(prompt, dummy_image)
+            response_text = vlm(prompt, dummy_image)
             
             # Parse JSON
             import re

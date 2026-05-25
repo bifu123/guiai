@@ -117,3 +117,4 @@ Werkzeug==3.1.5
 wheel==0.46.3
 zhipuai==2.1.5.20250825
 zstandard==0.25.0
+ollama==0.6.2

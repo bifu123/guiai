@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 api_key = os.getenv("DEEPSEEK_API_KEY")
-model = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+model = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
 base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
 
 if not api_key:
