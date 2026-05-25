@@ -7,8 +7,177 @@ import pyautogui
 from io import BytesIO
 from PIL import Image
 from dotenv import load_dotenv
+import ollama
+import time
 
 load_dotenv()
+
+class OllamaDetector:
+    """职责：利用本地 Ollama 部署的 Qwen3-VL 模型将视觉文字转化为物理像素坐标"""
+    
+    def __init__(self, host=None):
+        self.host = host or os.getenv("OLLAMA_HOST", "http://192.168.68.28:11434")
+        self.client = ollama.Client(host=self.host)
+        self.model = "qwen3-vl"
+
+    def _process_image(self, image_source):
+        """统一处理图片源，返回 base64 字符串和原始尺寸"""
+        if not image_source:
+            return None, None, None
+            
+        try:
+            if isinstance(image_source, str) and not image_source.startswith(('data:', 'iVBO')):
+                if not os.path.exists(image_source):
+                    print(f"错误：找不到文件 {image_source}")
+                    return None, None, None
+                with Image.open(image_source) as img:
+                    width, height = img.size
+                with open(image_source, "rb") as f:
+                    img_base64 = base64.b64encode(f.read()).decode('utf-8')
+            else:
+                img_data = base64.b64decode(image_source.replace('data:image/png;base64,', ''))
+                with Image.open(BytesIO(img_data)) as img:
+                    width, height = img.size
+                img_base64 = image_source.replace('data:image/png;base64,', '')
+            return img_base64, width, height
+        except Exception as e:
+            print(f"处理图片源失败: {e}")
+            return None, None, None
+
+    def get_target_coords(self, image_source, target_name, max_retries=None):
+        if max_retries is None:
+            max_retries = int(os.getenv("OCR_RETRY", 3))
+            
+        img_base64, width, height = self._process_image(image_source)
+        if not img_base64:
+            return None
+
+        base_prompt = f"""任务：在图片中寻找文字“{target_name}”。
+
+【输出格式要求（必须严格遵守）】：
+1. 只输出一个 JSON 对象，不要包含任何其他文字、解释或 markdown 标记。
+2. 你必须首先判断图片中是否存在该文字目标。
+3. 请严格按照以下 JSON 格式输出：
+{{
+    "found": true 或 false,
+    "norm_x": 整数 (如果 found 为 true，输出中心点 x 坐标；如果为 false，输出 -1),
+    "norm_y": 整数 (如果 found 为 true，输出中心点 y 坐标；如果为 false，输出 -1)
+}}
+
+【示例】：
+如果目标在图片正中央，输出：{{"found": true, "norm_x": 500, "norm_y": 500}}
+如果图片中没有该目标，输出：{{"found": false, "norm_x": -1, "norm_y": -1}}
+
+【警告】：
+- 绝对不要输出文本框的四个角坐标！
+- 绝对不要输出多个数字（如 488, 418, 15, 57, 90 是错误的）！
+- 只输出一个中心点坐标！
+- 坐标值必须是 0-1000 之间的整数！
+- 不要使用引号包裹数字或布尔值！"""
+
+        last_error = ""
+        for attempt in range(max_retries):
+            current_prompt = base_prompt
+            if attempt > 0:
+                current_prompt += f"\n\n【上一次输出错误】：\n你上一次的输出格式不正确，错误信息：{last_error}\n请根据错误信息修正你的输出，严格按照要求的 JSON 格式重新输出。"
+
+            messages = [{
+                'role': 'user',
+                'content': current_prompt,
+                'images': [img_base64]
+            }]
+
+            try:
+                print(f"正在请求 Ollama Qwen3-VL 定位: {target_name} (尝试 {attempt + 1}/{max_retries}) ...")
+                response = self.client.chat(
+                    model=self.model,
+                    messages=messages
+                )
+                content = response.get('message', {}).get('content', '')
+                
+                clean_content = content.strip()
+                if "```json" in clean_content:
+                    clean_content = clean_content.split("```json")[1].split("```")[0].strip()
+                elif "```" in clean_content:
+                    clean_content = clean_content.split("```")[1].split("```")[0].strip()
+                    
+                match = re.search(r'\{.*\}', clean_content, re.DOTALL)
+                if not match:
+                    last_error = f"无法从响应中提取 JSON: {content[:100]}..."
+                    print(last_error)
+                    continue
+                    
+                try:
+                    json_str = match.group().replace("'", '"')
+                    json_str = json_str.replace("True", "true").replace("False", "false")
+                    norm_data = json.loads(json_str)
+                    
+                    found = norm_data.get("found", True)
+                    if not found or str(found).lower() == "false":
+                        print(f"模型报告：在图片中未找到目标 '{target_name}'")
+                        return None
+                        
+                    norm_x = float(norm_data.get("norm_x", -1))
+                    norm_y = float(norm_data.get("norm_y", -1))
+                    
+                except Exception as e:
+                    print(f"警告: JSON 解析失败 ({e})，尝试正则提取。原始字符串: {content[:100]}...")
+                    if "false" in clean_content.lower():
+                        print(f"模型报告：在图片中未找到目标 '{target_name}'")
+                        return None
+                        
+                    norm_x_match = re.search(r'"?norm_x"?\s*:\s*(-?\d+(?:\.\d+)?)', clean_content)
+                    norm_y_match = re.search(r'"?norm_y"?\s*:\s*(-?\d+(?:\.\d+)?)', clean_content)
+                    
+                    if norm_x_match and norm_y_match:
+                        norm_x = float(norm_x_match.group(1))
+                        norm_y = float(norm_y_match.group(1))
+                    else:
+                        nums = re.findall(r'-?\d+(?:\.\d+)?', match.group())
+                        if len(nums) >= 2:
+                            norm_x = float(nums[0])
+                            norm_y = float(nums[1])
+                        else:
+                            last_error = f"JSON 解析失败且无法提取数字"
+                            print(last_error)
+                            continue
+
+                if norm_x == -1 and norm_y == -1:
+                    print(f"模型报告：在图片中未找到目标 '{target_name}'")
+                    return None
+
+                if ',' in str(norm_x) or ',' in str(norm_y):
+                    last_error = f"坐标值包含逗号: norm_x={norm_x}, norm_y={norm_y}"
+                    print(last_error)
+                    continue
+                    
+                if not (0 <= norm_x <= 1000) or not (0 <= norm_y <= 1000):
+                    last_error = f"坐标超出 0-1000 范围: norm_x={norm_x}, norm_y={norm_y}"
+                    print(last_error)
+                    continue
+
+                real_x = int(round((norm_x / 1000.0) * width))
+                real_y = int(round((norm_y / 1000.0) * height))
+
+                return {
+                    "x": real_x, 
+                    "y": real_y, 
+                    "debug": f"图片:{width}x{height}, 归一化:[{norm_x},{norm_y}]"
+                }
+
+            except Exception as e:
+                last_error = f"API 调用异常: {e}"
+                print(last_error)
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                    continue
+                else:
+                    print(f"定位业务执行失败，已达到最大重试次数: {e}")
+                    return None
+
+        print(f"定位目标 {target_name} 失败，已重试 {max_retries} 次。")
+        return None
+
 
 class QwenDetector:
     """职责：利用 Qwen-VL-OCR 模型将视觉文字转化为物理像素坐标"""
@@ -373,7 +542,8 @@ class BaiduTextAnchorService:
 # 全局 OCR 实例配置
 # 以后更换 OCR 模型时，只需要在这里修改实例化的类即可
 # ==========================================
-ocr = BaiduTextAnchorService()
+# ocr = BaiduTextAnchorService()
+ocr = OllamaDetector()
 
 # --- 完整测试入口 ---
 if __name__ == "__main__":

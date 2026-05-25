@@ -50,6 +50,7 @@ OCR 模型的相关代码位于 `gui_ocr.py` 中。
 目前 `gui_ocr.py` 中已经实现了以下模型的调用：
 - **百度 OCR (免费额度，精准度高)**: 类名为 `BaiduTextAnchorService`
 - **阿里千问 VL-OCR (云端 API)**: 类名为 `QwenDetector`
+- **Ollama Qwen3-VL (本地部署)**: 类名为 `OllamaDetector`
 
 ### 2.3 切换步骤
 1. 打开 `gui_ocr.py` 文件。
@@ -68,6 +69,7 @@ OCR 模型的相关代码位于 `gui_ocr.py` 中。
 4. 确保在 `.env` 文件中配置了相应的环境变量：
    - 如果使用百度 OCR，配置 `BAIDU_OCR_CLIENT_ID` 和 `BAIDU_OCR_CLIENT_SECRET`。
    - 如果使用千问 OCR，配置 `QWEN_OCR_API_KEY`。
+   - 如果使用 Ollama，配置 `OLLAMA_HOST`（例如：`OLLAMA_HOST=http://192.168.68.28:11434`）。
 
 ### 2.4 添加新的 OCR 模型
 如果您想接入其他 OCR 服务：
