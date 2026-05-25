@@ -22,8 +22,8 @@ Thumbs.db
 back/
 
 # --- ylbot / AI 业务敏感文件 (新增) ---
-.venv
 *.bak
+.env
 workspace/
 build/
 dist/
